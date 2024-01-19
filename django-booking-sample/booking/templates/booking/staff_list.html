@@ -1,0 +1,13 @@
+{% extends 'booking/base.html' %}
+
+{% block content %}
+
+    <h1>{{ store.name }} 在籍占い師 一覧</h1>
+    <ul>
+        {% for staff in staff_list %}
+            <li><a href="{% url 'booking:calendar' staff.pk %}">{{ staff.name }}</a></li>
+        {% empty %}
+            <li>まだ出勤予定の占い師がいません。</li>
+        {% endfor %}
+    </ul>
+{% endblock %}

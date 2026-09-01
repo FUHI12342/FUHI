@@ -16,16 +16,21 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/2.2/howto/deployment/checklist/
+# 本番では必ず環境変数 DJANGO_SECRET_KEY を設定すること。
+# 旧リポジトリにコミットされていたキーは漏洩済みとして扱い、使用しない。
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-dev-only-key-do-not-use-in-production',
+)
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = '&670@la%)g1zo2y7(+4+^pl00sb(cjl4rpvkf@2ly)eo+a$1k!'
+DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() in ('1', 'true', 'yes')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+ALLOWED_HOSTS = [h for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if h]
+if not ALLOWED_HOSTS and DEBUG:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
-ALLOWED_HOSTS = []
+# Cloud Run 等のリバースプロキシ配下で HTTPS 判定するための設定
+CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',') if o]
 
 
 # Application definition
@@ -110,8 +115,6 @@ TIME_ZONE = 'Asia/Tokyo'
 
 USE_I18N = True
 
-USE_L10N = True
-
 USE_TZ = True
 
 
@@ -123,45 +126,15 @@ STATIC_URL = '/static/'
 
 import datetime
 
+import jpholiday
+
+# 日本の祝日(前年〜翌年)。ハードコードだと毎年メンテが必要になるため jpholiday で生成する。
+_this_year = datetime.date.today().year
 PUBLIC_HOLIDAYS = [
-    # 2020
-    datetime.date(year=2020, month=1, day=1),
-    datetime.date(year=2020, month=1, day=13),
-    datetime.date(year=2020, month=2, day=11),
-    datetime.date(year=2020, month=2, day=23),
-    datetime.date(year=2020, month=2, day=24),
-    datetime.date(year=2020, month=3, day=20),
-    datetime.date(year=2020, month=4, day=29),
-    datetime.date(year=2020, month=5, day=3),
-    datetime.date(year=2020, month=5, day=4),
-    datetime.date(year=2020, month=5, day=5),
-    datetime.date(year=2020, month=7, day=20),
-    datetime.date(year=2020, month=8, day=11),
-    datetime.date(year=2020, month=9, day=21),
-    datetime.date(year=2020, month=9, day=22),
-    datetime.date(year=2020, month=10, day=12),
-    datetime.date(year=2020, month=11, day=3),
-    datetime.date(year=2020, month=11, day=23),
-
-    # 2021
-    datetime.date(year=2021, month=1, day=1),
-    datetime.date(year=2021, month=1, day=11),
-    datetime.date(year=2021, month=2, day=11),
-    datetime.date(year=2021, month=2, day=23),
-    datetime.date(year=2021, month=3, day=20),
-    datetime.date(year=2021, month=4, day=29),
-    datetime.date(year=2021, month=5, day=3),
-    datetime.date(year=2021, month=5, day=4),
-    datetime.date(year=2021, month=5, day=5),
-    datetime.date(year=2021, month=7, day=19),
-    datetime.date(year=2021, month=8, day=11),
-    datetime.date(year=2021, month=9, day=20),
-    datetime.date(year=2021, month=9, day=23),
-    datetime.date(year=2021, month=10, day=11),
-    datetime.date(year=2021, month=11, day=3),
-    datetime.date(year=2021, month=11, day=23),
+    d
+    for year in range(_this_year - 1, _this_year + 2)
+    for d, _name in jpholiday.year_holidays(year)
 ]
-
 LOGIN_URL = 'booking:login'
 LOGIN_REDIRECT_URL = 'booking:store_list'
 LOGOUT_REDIRECT_URL = 'booking:login'

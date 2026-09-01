@@ -16,7 +16,7 @@ class StoreListViewTests(TestCase):
     def test_get(self):
         """店舗の一覧が表示されるかテスト"""
         response = self.client.get(resolve_url('booking:store_list'))
-        self.assertQuerysetEqual(response.context['store_list'],  ['<Store: 店舗A>', '<Store: 店舗B>', '<Store: 店舗C>'])
+        self.assertQuerySetEqual(response.context['store_list'], ['店舗A', '店舗B', '店舗C'], transform=str)
 
 
 class StaffListViewTests(TestCase):
@@ -25,17 +25,17 @@ class StaffListViewTests(TestCase):
     def test_store_a(self):
         """店舗Aのスタッフリストの確認"""
         response = self.client.get(resolve_url('booking:staff_list', pk=1))
-        self.assertQuerysetEqual(response.context['staff_list'],  ['<Staff: 店舗A - じゃば>', '<Staff: 店舗A - ぱいそん>'])
+        self.assertQuerySetEqual(response.context['staff_list'], ['店舗A - じゃば', '店舗A - ぱいそん'], transform=str)
 
     def test_store_b(self):
         """店舗Bのスタッフリストの確認"""
         response = self.client.get(resolve_url('booking:staff_list', pk=2))
-        self.assertQuerysetEqual(response.context['staff_list'],  ['<Staff: 店舗B - じゃんご>'])
+        self.assertQuerySetEqual(response.context['staff_list'], ['店舗B - じゃんご'], transform=str)
 
     def test_store_c(self):
         """店舗Cのスタッフリストの確認。店舗Cには誰もいない"""
         response = self.client.get(resolve_url('booking:staff_list', pk=3))
-        self.assertQuerysetEqual(response.context['staff_list'],  [])
+        self.assertQuerySetEqual(response.context['staff_list'], [])
 
 
 class StaffCalendarViewTests(TestCase):
@@ -214,17 +214,17 @@ class MyPageViewTests(TestCase):
         """管理者でログインした場合。店舗スタッフではないので、ナニも表示されない"""
         self.client.login(username='admin', password='admin123')
         response = self.client.get(resolve_url('booking:my_page'))
-        self.assertQuerysetEqual(response.context['staff_list'], [])
-        self.assertQuerysetEqual(response.context['schedule_list'], [])
-        self.assertContains(response, 'adminのMyPage')
+        self.assertQuerySetEqual(response.context['staff_list'], [])
+        self.assertQuerySetEqual(response.context['schedule_list'], [])
+        self.assertContains(response, 'adminのマイページ')
 
     def test_login_tanaka(self):
         """田中でログイン。スタッフデータが表示されることを確認"""
         self.client.login(username='tanakataro', password='helloworld123')
         response = self.client.get(resolve_url('booking:my_page'))
-        self.assertQuerysetEqual(response.context['staff_list'], ['<Staff: 店舗B - じゃんご>', '<Staff: 店舗A - ぱいそん>'])
-        self.assertQuerysetEqual(response.context['schedule_list'], [])
-        self.assertContains(response, 'tanakataroのMyPage')
+        self.assertQuerySetEqual(response.context['staff_list'], ['店舗B - じゃんご', '店舗A - ぱいそん'], transform=str)
+        self.assertQuerySetEqual(response.context['schedule_list'], [])
+        self.assertContains(response, 'tanakataroのマイページ')
 
     def test_login_tanaka_with_schedule(self):
         """田中でログインし、予約がある場合、自分担当の予約だけ表示されるか確認。"""
@@ -253,7 +253,7 @@ class MyPageViewTests(TestCase):
         self.client.login(username='yosidaziro', password='helloworld123')
         response = self.client.get(resolve_url('booking:my_page'))
         self.assertEqual(list(response.context['schedule_list']), [s4])
-        self.assertContains(response, 'yosidaziroのMyPage')
+        self.assertContains(response, 'yosidaziroのマイページ')
 
 
 class MyPageWithPkViewTests(TestCase):
@@ -269,14 +269,14 @@ class MyPageWithPkViewTests(TestCase):
         self.client.login(username='admin', password='admin123')
         response = self.client.get(resolve_url('booking:my_page_with_pk', pk=2))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'tanakataroのMyPage')
+        self.assertContains(response, 'tanakataroのマイページ')
 
     def test_login_tanaka(self):
         """自分自身のマイページは見れる"""
         self.client.login(username='tanakataro', password='helloworld123')
         response = self.client.get(resolve_url('booking:my_page_with_pk', pk=2))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'tanakataroのMyPage')
+        self.assertContains(response, 'tanakataroのマイページ')
 
     def test_login_yosida(self):
         """他人のマイページは見れない"""

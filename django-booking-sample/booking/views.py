@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.exceptions import PermissionDenied
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
@@ -14,6 +15,12 @@ from .models import Store, Staff, Schedule
 
 
 User = get_user_model()
+
+
+def make_aware_datetime(year, month, day, hour):
+    """URLパラメータの年月日時を、現在のタイムゾーンの aware datetime にする。"""
+    naive = datetime.datetime(year=year, month=month, day=day, hour=hour)
+    return timezone.make_aware(naive, timezone.get_current_timezone())
 
 
 class OnlyStaffMixin(UserPassesTestMixin):
@@ -82,17 +89,18 @@ class StaffCalendar(generic.TemplateView):
         start_day = days[0]
         end_day = days[-1]
 
-        # 9時から17時まで1時間刻み、1週間分の、値がTrueなカレンダーを作る
+        # 店舗の営業時間で1時間刻み、1週間分の、値がTrueなカレンダーを作る
+        hours = staff.store.business_hours
         calendar = {}
-        for hour in range(9, 18):
+        for hour in hours:
             row = {}
             for day in days:
                 row[day] = True
             calendar[hour] = row
 
         # カレンダー表示する最初と最後の日時の間にある予約を取得する
-        start_time = datetime.datetime.combine(start_day, datetime.time(hour=9, minute=0, second=0))
-        end_time = datetime.datetime.combine(end_day, datetime.time(hour=17, minute=0, second=0))
+        start_time = make_aware_datetime(start_day.year, start_day.month, start_day.day, hours[0])
+        end_time = make_aware_datetime(end_day.year, end_day.month, end_day.day, hours[-1])
         for schedule in Schedule.objects.filter(staff=staff).exclude(Q(start__gt=end_time) | Q(end__lt=start_time)):
             local_dt = timezone.localtime(schedule.start)
             booking_date = local_dt.date()
@@ -128,16 +136,19 @@ class Booking(generic.CreateView):
         month = self.kwargs.get('month')
         day = self.kwargs.get('day')
         hour = self.kwargs.get('hour')
-        start = datetime.datetime(year=year, month=month, day=day, hour=hour)
-        end = datetime.datetime(year=year, month=month, day=day, hour=hour + 1)
-        if Schedule.objects.filter(staff=staff, start=start).exists():
+        start = make_aware_datetime(year, month, day, hour)
+        end = make_aware_datetime(year, month, day, hour) + datetime.timedelta(hours=1)
+        schedule = form.save(commit=False)
+        schedule.staff = staff
+        schedule.start = start
+        schedule.end = end
+        try:
+            # exists() チェックだけでは同時リクエストで二重予約が起きるため、
+            # DBのUNIQUE制約に最終判定を委ねる。
+            with transaction.atomic():
+                schedule.save()
+        except IntegrityError:
             messages.error(self.request, 'すみません、入れ違いで予約がありました。別の日時はどうですか。')
-        else:
-            schedule = form.save(commit=False)
-            schedule.staff = staff
-            schedule.start = start
-            schedule.end = end
-            schedule.save()
         return redirect('booking:calendar', pk=staff.pk, year=year, month=month, day=day)
 
 
@@ -178,14 +189,15 @@ class MyPageDayDetail(OnlyStaffMixin, generic.TemplateView):
         day = self.kwargs.get('day')
         date = datetime.date(year=year, month=month, day=day)
 
-        # 9時から17時まで1時間刻みのカレンダーを作る
+        # 店舗の営業時間で1時間刻みのカレンダーを作る
+        hours = staff.store.business_hours
         calendar = {}
-        for hour in range(9, 18):
+        for hour in hours:
             calendar[hour] = []
 
         # カレンダー表示する最初と最後の日時の間にある予約を取得する
-        start_time = datetime.datetime.combine(date, datetime.time(hour=9, minute=0, second=0))
-        end_time = datetime.datetime.combine(date, datetime.time(hour=17, minute=0, second=0))
+        start_time = make_aware_datetime(date.year, date.month, date.day, hours[0])
+        end_time = make_aware_datetime(date.year, date.month, date.day, hours[-1])
         for schedule in Schedule.objects.filter(staff=staff).exclude(Q(start__gt=end_time) | Q(end__lt=start_time)):
             local_dt = timezone.localtime(schedule.start)
             booking_date = local_dt.date()
@@ -215,9 +227,13 @@ class MyPageScheduleDelete(OnlyScheduleMixin, generic.DeleteView):
 def my_page_holiday_add(request, pk, year, month, day, hour):
     staff = get_object_or_404(Staff, pk=pk)
     if staff.user == request.user or request.user.is_superuser:
-        start = datetime.datetime(year=year, month=month, day=day, hour=hour)
-        end = datetime.datetime(year=year, month=month, day=day, hour=hour + 1)
-        Schedule.objects.create(staff=staff, start=start, end=end, name='休暇(システムによる追加)')
+        start = make_aware_datetime(year, month, day, hour)
+        end = start + datetime.timedelta(hours=1)
+        try:
+            with transaction.atomic():
+                Schedule.objects.create(staff=staff, start=start, end=end, name='休暇(システムによる追加)')
+        except IntegrityError:
+            messages.error(request, 'この時間には既に予約があります。')
         return redirect('booking:my_page_day_detail', pk=pk, year=year, month=month, day=day)
 
     raise PermissionDenied

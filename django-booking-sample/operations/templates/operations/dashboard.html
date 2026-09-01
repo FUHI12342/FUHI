@@ -1,0 +1,49 @@
+{% extends 'booking/base.html' %}
+
+{% block content %}
+    <h1>{{ store.name }} 開店ダッシュボード({{ business_day.date }})</h1>
+    <p>
+        状態: <strong>{{ business_day.get_status_display }}</strong>
+        / 営業時間: {{ business_day.opening_hour }}時 - {{ business_day.closing_hour }}時
+    </p>
+
+    {% if business_day.status == 'preparing' %}
+        <form action="{% url 'operations:open_store' store.pk %}" method="post">
+            {% csrf_token %}
+            <button type="submit">開店する(シフト確定・自動処理を実行)</button>
+        </form>
+    {% elif business_day.status == 'open' %}
+        <form action="{% url 'operations:close_store' store.pk %}" method="post">
+            {% csrf_token %}
+            <button type="submit">閉店する</button>
+        </form>
+    {% endif %}
+
+    <h2>開店チェックリスト</h2>
+    <ul>
+        {% for task in tasks %}
+            <li>
+                <form action="{% url 'operations:toggle_task' task.pk %}" method="post" style="display:inline">
+                    {% csrf_token %}
+                    <button type="submit">{% if task.is_done %}✓{% else %}□{% endif %}</button>
+                </form>
+                {{ task.title }}
+                {% if task.alert %}<strong style="color:red">⚠ {{ task.alert }}</strong>{% endif %}
+                {% if task.is_done %}<small>({{ task.done_at|time:'H:i' }} {{ task.done_by }})</small>{% endif %}
+            </li>
+        {% empty %}
+            <li>チェックリストの雛形が未登録です。管理画面から登録してください。</li>
+        {% endfor %}
+    </ul>
+
+    <h2>本日のシフト</h2>
+    <ul>
+        {% for shift in shifts %}
+            <li>{{ shift.staff.name }} {{ shift.start_time|time:'H:i' }} - {{ shift.end_time|time:'H:i' }}({{ shift.get_status_display }})</li>
+        {% empty %}
+            <li>本日のシフトはありません。</li>
+        {% endfor %}
+    </ul>
+
+    <p><a href="{% url 'booking:seat_board' store.pk %}">座席ボードを見る</a></p>
+{% endblock %}

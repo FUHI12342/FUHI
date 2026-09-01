@@ -11,7 +11,7 @@ from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views import generic
 from django.views.decorators.http import require_POST
-from .models import Store, Staff, Schedule
+from .models import Seat, Schedule, Staff, Store, WalkIn
 
 
 User = get_user_model()
@@ -221,6 +221,78 @@ class MyPageScheduleDelete(OnlyScheduleMixin, generic.DeleteView):
     success_url = reverse_lazy('booking:my_page')
 
 
+
+
+def _user_belongs_to_store(user, store):
+    return user.is_superuser or Staff.objects.filter(user=user, store=store).exists()
+
+
+class SeatBoard(LoginRequiredMixin, UserPassesTestMixin, generic.TemplateView):
+    """当日の座席ボード。時間帯×座席のグリッドで予約とウォークインを可視化する。"""
+    template_name = 'booking/seat_board.html'
+    raise_exception = True
+
+    def test_func(self):
+        store = get_object_or_404(Store, pk=self.kwargs['pk'])
+        return _user_belongs_to_store(self.request.user, store)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        store = get_object_or_404(Store, pk=self.kwargs['pk'])
+        date = timezone.localdate()
+        seats = list(store.seats.filter(is_active=True))
+        hours = store.business_hours
+
+        day_start = make_aware_datetime(date.year, date.month, date.day, 0)
+        day_end = day_start + datetime.timedelta(days=1)
+        schedules = Schedule.objects.filter(
+            seat__store=store, start__gte=day_start, start__lt=day_end
+        ).select_related('seat')
+        by_seat_hour = {}
+        for schedule in schedules:
+            local = timezone.localtime(schedule.start)
+            by_seat_hour[(schedule.seat_id, local.hour)] = schedule
+
+        rows = []
+        for hour in hours:
+            cells = [{'seat': seat, 'schedule': by_seat_hour.get((seat.pk, hour))} for seat in seats]
+            rows.append({'hour': hour, 'cells': cells})
+
+        context['store'] = store
+        context['date'] = date
+        context['seats'] = seats
+        context['rows'] = rows
+        context['active_walkins'] = WalkIn.objects.filter(seat__store=store, left_at__isnull=True).select_related('seat')
+        return context
+
+
+@require_POST
+def walkin_start(request, seat_pk):
+    seat = get_object_or_404(Seat, pk=seat_pk)
+    if not request.user.is_authenticated or not _user_belongs_to_store(request.user, seat.store):
+        raise PermissionDenied
+    try:
+        party_size = int(request.POST.get('party_size', '1'))
+    except ValueError:
+        party_size = 1
+    if WalkIn.objects.filter(seat=seat, left_at__isnull=True).exists():
+        messages.error(request, f'{seat.name} は使用中です。')
+    else:
+        WalkIn.objects.create(seat=seat, party_size=max(1, party_size))
+        messages.success(request, f'{seat.name} に{party_size}名 着席。')
+    return redirect('booking:seat_board', pk=seat.store.pk)
+
+
+@require_POST
+def walkin_end(request, pk):
+    walkin = get_object_or_404(WalkIn.objects.select_related('seat__store'), pk=pk)
+    if not request.user.is_authenticated or not _user_belongs_to_store(request.user, walkin.seat.store):
+        raise PermissionDenied
+    if walkin.left_at is None:
+        walkin.left_at = timezone.now()
+        walkin.save(update_fields=['left_at'])
+        messages.success(request, f'{walkin.seat.name} 離席。')
+    return redirect('booking:seat_board', pk=walkin.seat.store.pk)
 
 
 @require_POST

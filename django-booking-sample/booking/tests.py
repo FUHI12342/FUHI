@@ -499,3 +499,65 @@ class MyPageHolidayAddViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 405)
 
+
+
+class SeatBoardViewTests(TestCase):
+    fixtures = ['initial']
+
+    def setUp(self):
+        from .models import Seat, Store
+        self.store = Store.objects.get(pk=1)
+        self.seat = Seat.objects.create(store=self.store, name='T1', capacity=4)
+
+    def test_requires_store_membership(self):
+        self.client.login(username='yosidaziro', password='helloworld123')
+        response = self.client.get(resolve_url('booking:seat_board', pk=2))
+        self.assertEqual(response.status_code, 403)
+
+    def test_board_shows_seat_and_reservation(self):
+        staff = get_object_or_404(Staff, pk=1)
+        now = timezone.localtime().replace(hour=10, minute=0, second=0, microsecond=0)
+        Schedule.objects.create(
+            staff=staff, start=now, end=now + datetime.timedelta(hours=1),
+            name='佐藤', seat=self.seat, party_size=3,
+        )
+        self.client.login(username='tanakataro', password='helloworld123')
+        response = self.client.get(resolve_url('booking:seat_board', pk=1))
+        self.assertContains(response, 'T1')
+        self.assertContains(response, '佐藤(3名)')
+
+    def test_walkin_start_and_end(self):
+        from .models import WalkIn
+        self.client.login(username='tanakataro', password='helloworld123')
+        response = self.client.post(
+            resolve_url('booking:walkin_start', seat_pk=self.seat.pk),
+            {'party_size': '2'}, follow=True,
+        )
+        walkin = WalkIn.objects.get(seat=self.seat)
+        self.assertTrue(walkin.is_active)
+        self.assertEqual(walkin.party_size, 2)
+
+        # 使用中の席には重ねて着席できない
+        response = self.client.post(
+            resolve_url('booking:walkin_start', seat_pk=self.seat.pk),
+            {'party_size': '1'}, follow=True,
+        )
+        messages = [str(m) for m in response.context['messages']]
+        self.assertIn('T1 は使用中です。', messages)
+
+        self.client.post(resolve_url('booking:walkin_end', pk=walkin.pk))
+        walkin.refresh_from_db()
+        self.assertFalse(walkin.is_active)
+
+    def test_seat_double_booking_rejected(self):
+        from django.db import IntegrityError
+        staff1 = get_object_or_404(Staff, pk=1)
+        staff3 = get_object_or_404(Staff, pk=3)
+        now = timezone.localtime().replace(hour=10, minute=0, second=0, microsecond=0)
+        Schedule.objects.create(
+            staff=staff1, start=now, end=now + datetime.timedelta(hours=1), name='A', seat=self.seat,
+        )
+        with self.assertRaises(IntegrityError):
+            Schedule.objects.create(
+                staff=staff3, start=now, end=now + datetime.timedelta(hours=1), name='B', seat=self.seat,
+            )

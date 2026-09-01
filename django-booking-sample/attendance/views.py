@@ -70,11 +70,13 @@ def clock_out(request, staff_pk):
 
 
 class MonthlyCsvExport(LoginRequiredMixin, UserPassesTestMixin, generic.View):
-    """月次勤務実績CSV(給与計算SaaSへのインポート用)。管理者のみ。"""
+    """月次勤務実績CSV(給与計算SaaSへのインポート用)。その店舗の店長のみ。"""
     raise_exception = True
 
     def test_func(self):
-        return self.request.user.is_superuser
+        from booking.access import user_belongs_to_store
+        store = get_object_or_404(Store, pk=self.kwargs['store_pk'])
+        return user_belongs_to_store(self.request.user, store, require_manager=True)
 
     def get(self, request, store_pk, year, month):
         store = get_object_or_404(Store, pk=store_pk)

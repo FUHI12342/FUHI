@@ -9,8 +9,8 @@ class StoreAdmin(admin.ModelAdmin):
 
 @admin.register(Staff)
 class StaffAdmin(admin.ModelAdmin):
-    list_display = ('name', 'store', 'kind', 'sns_publishable', 'is_on_roster')
-    list_filter = ('store', 'kind', 'sns_publishable', 'is_on_roster')
+    list_display = ('name', 'store', 'kind', 'is_manager', 'sns_publishable', 'is_on_roster')
+    list_filter = ('store', 'kind', 'is_manager', 'sns_publishable', 'is_on_roster')
 
 
 @admin.register(Seat)

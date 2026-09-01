@@ -41,7 +41,8 @@ class Command(BaseCommand):
         )
 
         manager, _ = Staff.objects.get_or_create(
-            user=user, store=store, defaults={'name': '店長', 'kind': Staff.KIND_STAFF}
+            user=user, store=store,
+            defaults={'name': '店長', 'kind': Staff.KIND_STAFF, 'is_manager': True},
         )
 
         cast_names = ['あかり', 'みお', 'ゆず']

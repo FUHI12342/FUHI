@@ -23,7 +23,16 @@ gcloud run deploy booking --source . --region asia-northeast1 \
   --set-secrets DJANGO_SECRET_KEY=django-secret-key:latest
 ```
 
-- DB: 本番は Cloud SQL(PostgreSQL)を推奨。`DATABASES` の環境変数化は導入時に対応。
+- DB: 本番は Cloud SQL(PostgreSQL)。`DATABASE_URL` に対応済みなので、インスタンスを作って接続文字列を渡すだけ:
+
+```bash
+gcloud sql instances create booking-db --database-version=POSTGRES_16 \
+  --tier=db-f1-micro --region=asia-northeast1
+gcloud sql databases create booking --instance=booking-db
+gcloud sql users create app --instance=booking-db --password=<PASSWORD>
+# Cloud Run 側: --add-cloudsql-instances と
+# DATABASE_URL=postgres://app:<PASSWORD>@/booking?host=/cloudsql/<PROJECT>:asia-northeast1:booking-db
+```
 - 画像の公開ホスティング(Instagram 投稿の前提):
 
 ```bash

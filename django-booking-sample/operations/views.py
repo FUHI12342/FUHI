@@ -59,7 +59,7 @@ def toggle_task(request, task_pk):
 @login_required
 def open_store(request, store_pk):
     store = get_object_or_404(Store, pk=store_pk)
-    if not user_belongs_to_store(request.user, store):
+    if not user_belongs_to_store(request.user, store, require_manager=True):
         raise PermissionDenied
     business_day = services.start_business_day(store, timezone.localdate())
     services.open_store(business_day, request.user)
@@ -71,7 +71,7 @@ def open_store(request, store_pk):
 @login_required
 def close_store(request, store_pk):
     store = get_object_or_404(Store, pk=store_pk)
-    if not user_belongs_to_store(request.user, store):
+    if not user_belongs_to_store(request.user, store, require_manager=True):
         raise PermissionDenied
     business_day = services.start_business_day(store, timezone.localdate())
     services.close_store(business_day)

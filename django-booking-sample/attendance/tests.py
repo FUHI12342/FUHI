@@ -87,11 +87,19 @@ class ClockViewTests(TestCase):
 class MonthlyCsvExportTests(TestCase):
     fixtures = ['initial']
 
-    def test_requires_superuser(self):
-        self.client.login(username='tanakataro', password='helloworld123')
+    def test_non_manager_is_rejected(self):
+        # yosidaziro は店舗Aの一般スタッフ(店長ではない)
+        self.client.login(username='yosidaziro', password='helloworld123')
         today = timezone.localdate()
         response = self.client.get(resolve_url('attendance:monthly_csv', store_pk=1, year=today.year, month=today.month))
         self.assertEqual(response.status_code, 403)
+
+    def test_store_manager_can_export(self):
+        # tanakataro は店舗Aの店長(fixture で is_manager=True)
+        self.client.login(username='tanakataro', password='helloworld123')
+        today = timezone.localdate()
+        response = self.client.get(resolve_url('attendance:monthly_csv', store_pk=1, year=today.year, month=today.month))
+        self.assertEqual(response.status_code, 200)
 
     def test_csv_content(self):
         staff = Staff.objects.get(pk=1)

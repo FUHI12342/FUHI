@@ -3,7 +3,7 @@ import logging
 from django.core.files.base import ContentFile
 
 from attendance.models import Shift
-from .adapters import AdapterError, get_adapters
+from .adapters import get_adapters
 from .imaging import generate_open_image
 from .models import DEFAULT_BODY_TEMPLATE, PostDraft, PostResult, PostTemplate
 
@@ -50,19 +50,26 @@ def build_body(store, date, cast_shifts, arrivals):
 
 
 def generate_draft(store, date):
-    """開店告知の下書き(文面+画像)を生成する。1日1件、再生成は上書き。
+    """開店告知の下書き(文面+画像)を生成する。1日1件(DB制約)。
 
-    出勤キャストは publishable_casts(在籍中・SNS掲載可)のみを使う。
+    - 出勤キャストは publishable_casts(在籍中・SNS掲載可)のみを使う。
+    - 承認済みの下書きは上書きしない(同日の二重投稿防止)。既存をそのまま返す。
     """
+    existing = PostDraft.objects.filter(store=store, date=date).first()
+    if existing and existing.status == PostDraft.STATUS_APPROVED:
+        return existing
+
     cast_shifts = list(Shift.objects.publishable_casts(store, date))
     arrivals = _arrivals_for(store, date)
     body = build_body(store, date, cast_shifts, arrivals)
 
     draft, _created = PostDraft.objects.update_or_create(
-        store=store, date=date, status=PostDraft.STATUS_DRAFT,
+        store=store, date=date,
         defaults={'body': body},
     )
     png = generate_open_image(store.name, date, cast_shifts)
+    if draft.image:
+        draft.image.delete(save=False)  # 再生成時に古い画像ファイルを残さない
     draft.image.save(f'{store.pk}_{date:%Y%m%d}.png', ContentFile(png), save=True)
     return draft
 
@@ -86,22 +93,51 @@ def publish_draft(draft, user, adapters=None):
 
     results = []
     for adapter in adapters:
-        if not adapter.is_configured():
-            results.append(PostResult.objects.create(
-                draft=draft, platform=adapter.platform, status=PostResult.STATUS_MANUAL,
-                detail='API未設定のため、文面と画像をコピーして手動投稿してください。',
-            ))
+        results.append(_publish_one(draft, adapter, image_url))
+    return results
+
+
+def _publish_one(draft, adapter, image_url):
+    if not adapter.is_configured():
+        return PostResult.objects.create(
+            draft=draft, platform=adapter.platform, status=PostResult.STATUS_MANUAL,
+            detail='API未設定のため、文面と画像をコピーして手動投稿してください。',
+        )
+    try:
+        url = adapter.publish(draft.body, image_url)
+        return PostResult.objects.create(
+            draft=draft, platform=adapter.platform, status=PostResult.STATUS_POSTED, external_url=url,
+        )
+    except Exception as e:
+        # AdapterError に限定しない: アダプタが送出する生のネットワーク例外等で
+        # 配信ループ全体が死ぬと、残りのプラットフォームが未記録のまま再試行不能になる。
+        logger.exception('publish to %s failed', adapter.platform)
+        return PostResult.objects.create(
+            draft=draft, platform=adapter.platform, status=PostResult.STATUS_FAILED, detail=str(e)[:255],
+        )
+
+
+def retry_unfinished(draft, adapters=None):
+    """承認済み下書きの未完了プラットフォームだけ再配信する。
+
+    対象: 最新結果が「失敗」または結果が無い(配信ループが中断した)プラットフォーム。
+    投稿済み(二重投稿防止)と手動フォールバック(人間の担当)はスキップ。
+    """
+    if adapters is None:
+        adapters = get_adapters()
+
+    image_url = None
+    if draft.image:
+        base = _public_media_base()
+        if base:
+            image_url = base.rstrip('/') + draft.image.url
+
+    results = []
+    for adapter in adapters:
+        latest = draft.results.filter(platform=adapter.platform).order_by('-created_at').first()
+        if latest and latest.status in (PostResult.STATUS_POSTED, PostResult.STATUS_MANUAL):
             continue
-        try:
-            url = adapter.publish(draft.body, image_url)
-            results.append(PostResult.objects.create(
-                draft=draft, platform=adapter.platform, status=PostResult.STATUS_POSTED, external_url=url,
-            ))
-        except AdapterError as e:
-            logger.exception('publish to %s failed', adapter.platform)
-            results.append(PostResult.objects.create(
-                draft=draft, platform=adapter.platform, status=PostResult.STATUS_FAILED, detail=str(e)[:255],
-            ))
+        results.append(_publish_one(draft, adapter, image_url))
     return results
 
 

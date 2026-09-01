@@ -87,6 +87,18 @@ class GenerateDraftTests(TestCase):
         draft2 = services.generate_draft(self.store, self.today)
         self.assertEqual(draft1.pk, draft2.pk)
 
+    def test_regenerate_after_approval_does_not_create_second_draft(self):
+        # 承認済みの日に再生成しても新しい下書きは作られない(同日の二重投稿防止)
+        draft = services.generate_draft(self.store, self.today)
+        user = Staff.objects.get(pk=1).user
+        services.publish_draft(draft, user, adapters=[])
+        body_before = PostDraft.objects.get(pk=draft.pk).body
+        again = services.generate_draft(self.store, self.today)
+        self.assertEqual(again.pk, draft.pk)
+        self.assertEqual(PostDraft.objects.filter(store=self.store, date=self.today).count(), 1)
+        self.assertEqual(again.status, PostDraft.STATUS_APPROVED)
+        self.assertEqual(again.body, body_before)
+
 
 @override_settings(MEDIA_ROOT=MEDIA_TMP)
 class PublishDraftTests(TestCase):
@@ -113,6 +125,34 @@ class PublishDraftTests(TestCase):
         results = services.publish_draft(self.draft, self.user, adapters=[FakeAdapter(fail=True)])
         self.assertEqual(results[0].status, PostResult.STATUS_FAILED)
         self.assertIn('boom', results[0].detail)
+
+    def test_raw_exception_does_not_abort_publish_loop(self):
+        # AdapterError 以外の例外(実APIの生のネットワーク例外等)でも
+        # 失敗として記録し、後続プラットフォームの配信を続行する
+        class RawErrorAdapter(FakeAdapter):
+            platform = 'raw'
+
+            def publish(self, body, image_url=None):
+                raise ValueError('connection reset')
+
+        results = services.publish_draft(
+            self.draft, self.user, adapters=[RawErrorAdapter(), FakeAdapter()]
+        )
+        self.assertEqual(results[0].status, PostResult.STATUS_FAILED)
+        self.assertEqual(results[1].status, PostResult.STATUS_POSTED)
+
+    def test_retry_unfinished_targets_failed_and_missing_only(self):
+        failed = FakeAdapter(fail=True)
+        services.publish_draft(self.draft, self.user, adapters=[failed])
+        # 再試行: 今度は成功するアダプタ + 未記録のプラットフォーム
+        ok = FakeAdapter()
+        missing = FakeAdapter()
+        missing.platform = 'missing'
+        results = services.retry_unfinished(self.draft, adapters=[ok, missing])
+        self.assertEqual({r.platform for r in results}, {'fake', 'missing'})
+        self.assertTrue(all(r.status == PostResult.STATUS_POSTED for r in results))
+        # 投稿済みになった後の再試行は何もしない(二重投稿防止)
+        self.assertEqual(services.retry_unfinished(self.draft, adapters=[ok]), [])
 
 
 @override_settings(MEDIA_ROOT=MEDIA_TMP)
@@ -159,11 +199,12 @@ class DraftViewTests(TestCase):
         statuses = set(draft.results.values_list('status', flat=True))
         self.assertEqual(statuses, {PostResult.STATUS_MANUAL})
 
-    def test_approve_twice_rejected(self):
+    def test_approve_twice_does_not_duplicate_manual_results(self):
+        # 全プラットフォームが manual(担当は人間)の場合、再POSTは何も再配信しない
         draft = services.generate_draft(self.store, self.today)
         self.client.login(username='tanakataro', password='helloworld123')
         self.client.post(resolve_url('sns:approve', pk=draft.pk))
         count = draft.results.count()
         response = self.client.post(resolve_url('sns:approve', pk=draft.pk), follow=True)
-        self.assertContains(response, '承認済みです')
+        self.assertContains(response, '再配信が必要なプラットフォームはありません')
         self.assertEqual(draft.results.count(), count)

@@ -561,3 +561,34 @@ class SeatBoardViewTests(TestCase):
             Schedule.objects.create(
                 staff=staff3, start=now, end=now + datetime.timedelta(hours=1), name='B', seat=self.seat,
             )
+
+
+class ModelConstraintTests(TestCase):
+    fixtures = ['initial']
+
+    def test_store_rejects_overnight_hours(self):
+        from django.db import IntegrityError
+        from .models import Store
+        with self.assertRaises(IntegrityError):
+            Store.objects.create(name='深夜バー', opening_hour=18, closing_hour=2)
+
+    def test_store_rejects_hours_beyond_24(self):
+        from django.db import IntegrityError
+        from .models import Store
+        with self.assertRaises(IntegrityError):
+            Store.objects.create(name='26時閉店', opening_hour=18, closing_hour=26)
+
+    def test_single_active_walkin_per_seat(self):
+        from django.db import IntegrityError, transaction
+        from .models import Seat, Store, WalkIn
+        store = Store.objects.get(pk=1)
+        seat = Seat.objects.create(store=store, name='T9')
+        WalkIn.objects.create(seat=seat, party_size=2)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                WalkIn.objects.create(seat=seat, party_size=1)
+        # 離席後は再度着席できる
+        active = WalkIn.objects.get(seat=seat)
+        active.left_at = timezone.now()
+        active.save()
+        WalkIn.objects.create(seat=seat, party_size=3)

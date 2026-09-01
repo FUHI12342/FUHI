@@ -1,5 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Sum
+from django.db.models.functions import Coalesce
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect
@@ -8,7 +10,7 @@ from django.views import generic
 from django.views.decorators.http import require_POST
 
 from booking.models import Store
-from operations.views import user_belongs_to_store
+from booking.access import user_belongs_to_store
 from .models import Product, PurchaseOrder, StockMovement
 from . import services
 
@@ -26,7 +28,12 @@ class StockList(LoginRequiredMixin, UserPassesTestMixin, generic.TemplateView):
         context = super().get_context_data(**kwargs)
         store = get_object_or_404(Store, pk=self.kwargs['store_pk'])
         context['store'] = store
-        context['products'] = store.products.filter(is_active=True)
+        # 商品ごとに Sum を発行しない(1クエリで現在庫を注釈する)
+        context['products'] = (
+            store.products.filter(is_active=True)
+            .select_related('supplier')
+            .annotate(stock=Coalesce(Sum('movements__quantity'), 0))
+        )
         context['orders'] = PurchaseOrder.objects.filter(store=store).select_related('supplier')[:20]
         return context
 
@@ -95,6 +102,20 @@ def approve_order(request, pk):
             messages.warning(request, order.note)
         else:
             messages.success(request, f'{order.supplier.name} へ発注メールを送信しました。')
+    return redirect('inventory:order_detail', pk=order.pk)
+
+
+@require_POST
+@login_required
+def receive_order(request, pk):
+    order = get_object_or_404(PurchaseOrder.objects.select_related('store'), pk=pk)
+    if not user_belongs_to_store(request.user, order.store):
+        raise PermissionDenied
+    if order.status != PurchaseOrder.STATUS_SENT:
+        messages.error(request, '入荷待ちの発注ではありません。')
+    else:
+        services.mark_received(order)
+        messages.success(request, '入荷済みにし、発注数量を在庫へ反映しました。')
     return redirect('inventory:order_detail', pk=order.pk)
 
 

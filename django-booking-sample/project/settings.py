@@ -18,12 +18,16 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # 本番では必ず環境変数 DJANGO_SECRET_KEY を設定すること。
 # 旧リポジトリにコミットされていたキーは漏洩済みとして扱い、使用しない。
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-dev-only-key-do-not-use-in-production',
-)
+_DEV_SECRET_KEY = 'django-insecure-dev-only-key-do-not-use-in-production'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', _DEV_SECRET_KEY)
 
 DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() in ('1', 'true', 'yes')
+
+if not DEBUG and SECRET_KEY == _DEV_SECRET_KEY:
+    # 本番でシークレット未設定のまま起動しない(フェイルセーフ)。
+    # 開発用キーは公開リポジトリに載っており、セッション偽造が可能になるため。
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured('DJANGO_DEBUG=false のときは DJANGO_SECRET_KEY の設定が必須です。')
 
 ALLOWED_HOSTS = [h for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if h]
 if not ALLOWED_HOSTS and DEBUG:

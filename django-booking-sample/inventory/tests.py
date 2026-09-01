@@ -186,3 +186,47 @@ class InventoryViewTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, PurchaseOrder.STATUS_SENT)
         self.assertEqual(len(mail.outbox), 1)
+
+
+class OrderLifecycleTests(TestCase):
+    fixtures = ['initial']
+
+    def setUp(self):
+        self.store = Store.objects.get(pk=1)
+        self.supplier = Supplier.objects.create(store=self.store, name='酒販店X')
+        self.product = make_product(self.store, '日本酒A', supplier=self.supplier, reorder_point=5, stock=2, order_lot=6)
+        self.user = self.store.staff_set.first().user
+
+    def test_received_order_unblocks_future_proposals(self):
+        order = services.generate_order_proposals(self.store)[0]
+        services.approve_and_send(order, self.user)
+        # 入荷待ちの間は再提案されない
+        self.assertEqual(services.generate_order_proposals(self.store), [])
+        # 入荷済みにすると在庫が増え、その後在庫が減ればまた提案される
+        services.mark_received(order)
+        order.refresh_from_db()
+        self.assertEqual(order.status, PurchaseOrder.STATUS_RECEIVED)
+        self.assertEqual(self.product.current_stock, 8)  # 2 + 発注ロット6
+        StockMovement.objects.create(product=self.product, kind=StockMovement.KIND_SALE, quantity=-7)
+        self.assertEqual(len(services.generate_order_proposals(self.store)), 1)
+
+    def test_stale_sent_order_stops_blocking_after_30_days(self):
+        import datetime as dt
+        from django.utils import timezone as tz
+        order = services.generate_order_proposals(self.store)[0]
+        services.approve_and_send(order, self.user)
+        # 送信から30日経過(入荷済みへの更新を忘れたケース)
+        PurchaseOrder.objects.filter(pk=order.pk).update(
+            sent_at=tz.now() - dt.timedelta(days=31)
+        )
+        proposals = services.generate_order_proposals(self.store)
+        self.assertEqual(len(proposals), 1)
+
+    def test_receive_order_view(self):
+        order = services.generate_order_proposals(self.store)[0]
+        services.approve_and_send(order, self.user)
+        self.client.login(username='tanakataro', password='helloworld123')
+        response = self.client.post(resolve_url('inventory:receive_order', pk=order.pk), follow=True)
+        self.assertContains(response, '入荷済みにし')
+        order.refresh_from_db()
+        self.assertEqual(order.status, PurchaseOrder.STATUS_RECEIVED)

@@ -8,13 +8,10 @@ from django.views import generic
 from django.views.decorators.http import require_POST
 
 from attendance.models import Shift
-from booking.models import Staff, Store
+from booking.access import user_belongs_to_store
+from booking.models import Store
 from .models import BusinessDay, ChecklistTask
 from . import services
-
-
-def user_belongs_to_store(user, store):
-    return user.is_superuser or Staff.objects.filter(user=user, store=store).exists()
 
 
 class StoreStaffOnlyMixin(LoginRequiredMixin, UserPassesTestMixin):

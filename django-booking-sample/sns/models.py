@@ -49,6 +49,10 @@ class PostDraft(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        constraints = [
+            # 同日の下書きは1件のみ(承認済みの日に再生成して二重投稿する事故の防止)
+            models.UniqueConstraint(fields=['store', 'date'], name='unique_post_draft_per_day'),
+        ]
 
     def __str__(self):
         return f'{self.store.name} {self.date} ({self.get_status_display()})'

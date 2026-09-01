@@ -8,7 +8,7 @@ from django.views import generic
 from django.views.decorators.http import require_POST
 
 from booking.models import Store
-from operations.views import user_belongs_to_store
+from booking.access import user_belongs_to_store
 from .models import PostDraft
 from . import services
 
@@ -60,7 +60,12 @@ def approve(request, pk):
     if not user_belongs_to_store(request.user, draft.store):
         raise PermissionDenied
     if draft.status == PostDraft.STATUS_APPROVED:
-        messages.error(request, 'この下書きは承認済みです。')
+        # 承認済み: 失敗・未記録のプラットフォームだけ再配信(投稿済み・手動はスキップ)
+        results = services.retry_unfinished(draft)
+        if results:
+            messages.success(request, f'{len(results)}件のプラットフォームへ再配信を試みました。結果を確認してください。')
+        else:
+            messages.info(request, '再配信が必要なプラットフォームはありません(投稿済み、または手動投稿の対象です)。')
     else:
         services.publish_draft(draft, request.user)
         messages.success(request, '承認しました。各プラットフォームの結果を確認してください。')

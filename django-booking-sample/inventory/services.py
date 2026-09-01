@@ -53,16 +53,24 @@ def products_below_reorder_point(store):
     return list(products)
 
 
+# 「発注済み(入荷待ち)」が再提案をブロックする期間。入荷済みへの更新を忘れても、
+# この日数を過ぎれば再提案が復活する(商品が永久にブロックされる事故の防止)。
+SENT_ORDER_BLOCK_DAYS = 30
+
+
 def generate_order_proposals(store):
     """発注点割れの商品から、仕入先ごとの発注案を生成する。
 
     - 送信はしない。人間の承認(approve_and_send)が必須(要件F-4、完全自動発注は見送り)。
-    - 既に発注案・発注済み(未取消)に載っている商品は重複提案しない。
+    - 発注案(承認待ち)と、送信後30日以内の「入荷待ち」に載っている商品は重複提案しない。
+      入荷登録時に発注を「入荷済み」へ更新すればその時点でブロックが外れる。
     """
+    sent_cutoff = timezone.now() - datetime.timedelta(days=SENT_ORDER_BLOCK_DAYS)
     pending_product_ids = set(
         PurchaseOrderItem.objects.filter(
+            models.Q(order__status=PurchaseOrder.STATUS_PROPOSED)
+            | models.Q(order__status=PurchaseOrder.STATUS_SENT, order__sent_at__gte=sent_cutoff),
             order__store=store,
-            order__status__in=[PurchaseOrder.STATUS_PROPOSED, PurchaseOrder.STATUS_SENT],
         ).values_list('product_id', flat=True)
     )
 
@@ -103,4 +111,21 @@ def approve_and_send(order, user):
     order.status = PurchaseOrder.STATUS_SENT
     order.sent_at = timezone.now()
     order.save(update_fields=['status', 'approved_by', 'sent_at', 'note'])
+    return order
+
+
+def mark_received(order, record_stock=True):
+    """発注を「入荷済み」にし、任意で発注数量ぶんの入荷を在庫に記録する。"""
+    if order.status != PurchaseOrder.STATUS_SENT:
+        return order
+    if record_stock:
+        StockMovement.objects.bulk_create([
+            StockMovement(
+                product=item.product, kind=StockMovement.KIND_ARRIVAL,
+                quantity=item.quantity, note=f'発注 #{order.pk} の入荷',
+            )
+            for item in order.items.select_related('product')
+        ])
+    order.status = PurchaseOrder.STATUS_RECEIVED
+    order.save(update_fields=['status'])
     return order

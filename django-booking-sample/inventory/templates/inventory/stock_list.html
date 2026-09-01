@@ -9,8 +9,8 @@
         {% for product in products %}
             <tr>
                 <td>{{ product.name }}{% if product.sns_announce %} 📣{% endif %}</td>
-                <td {% if product.is_below_reorder_point %}style="color:red;font-weight:bold"{% endif %}>
-                    {{ product.current_stock }}{{ product.unit }}
+                <td {% if product.stock <= product.reorder_point %}style="color:red;font-weight:bold"{% endif %}>
+                    {{ product.stock }}{{ product.unit }}
                 </td>
                 <td>{{ product.reorder_point }}</td>
                 <td>{{ product.supplier|default:'-' }}</td>

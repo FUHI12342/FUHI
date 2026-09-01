@@ -14,8 +14,19 @@ class Store(models.Model):
 
     name = models.CharField('店名', max_length=255)
     business_type = models.CharField('業態', max_length=20, choices=BUSINESS_TYPE_CHOICES, default=TYPE_FORTUNE)
+    # 深夜営業(閉店が翌日にまたがる 18時-26時 等)は未対応。閉店は当日24時まで。
+    # 対応する場合の設計は docs/backlog.md 参照。
     opening_hour = models.PositiveSmallIntegerField('開店時刻(時)', default=9)
     closing_hour = models.PositiveSmallIntegerField('閉店時刻(時)', default=18)
+
+    class Meta:
+        constraints = [
+            # 空の営業時間(開店>=閉店)や24時超えはカレンダー・座席ボードを壊すためDBで禁止
+            models.CheckConstraint(
+                condition=models.Q(opening_hour__lt=models.F('closing_hour'), closing_hour__lte=24),
+                name='store_valid_business_hours',
+            ),
+        ]
 
     def __str__(self):
         return self.name
@@ -123,6 +134,14 @@ class WalkIn(models.Model):
 
     class Meta:
         ordering = ['-seated_at']
+        constraints = [
+            # 同一座席に同時に複数の「着席中」を作れない(同時タップの競合防止)
+            models.UniqueConstraint(
+                fields=['seat'],
+                condition=models.Q(left_at__isnull=True),
+                name='unique_active_walkin_per_seat',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.seat} {self.party_size}名 {timezone.localtime(self.seated_at):%H:%M}'

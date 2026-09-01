@@ -18,6 +18,10 @@
         <p><small>API設定済みのプラットフォームには自動投稿されます。未設定のものは「手動投稿」と表示されるので、上の本文と画像をコピーして投稿してください。</small></p>
     {% else %}
         <p>承認: {{ object.approved_by }}({{ object.approved_at }})</p>
+        <form action="{% url 'sns:approve' object.pk %}" method="post">
+            {% csrf_token %}
+            <button type="submit">失敗したプラットフォームへ再配信する</button>
+        </form>
     {% endif %}
 
     <h2>投稿結果</h2>

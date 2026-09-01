@@ -85,10 +85,12 @@ class PurchaseOrder(models.Model):
     """発注。自動生成されるのは「発注案(proposed)」まで。送信は人間の承認後(要件F-4)。"""
     STATUS_PROPOSED = 'proposed'
     STATUS_SENT = 'sent'
+    STATUS_RECEIVED = 'received'
     STATUS_CANCELLED = 'cancelled'
     STATUS_CHOICES = [
         (STATUS_PROPOSED, '発注案(承認待ち)'),
-        (STATUS_SENT, '発注済み'),
+        (STATUS_SENT, '発注済み(入荷待ち)'),
+        (STATUS_RECEIVED, '入荷済み'),
         (STATUS_CANCELLED, '取消'),
     ]
 

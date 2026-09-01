@@ -16,6 +16,12 @@
             <button type="submit">取り消す</button>
         </form>
         <p><small>仕入先にメールアドレスが設定されていれば発注書メールを送信します。未設定なら上のテキストを電話/FAX/LINEで送付してください。</small></p>
+    {% elif object.status == 'sent' %}
+        <p>{{ object.sent_at|date:'Y/m/d H:i' }} 承認: {{ object.approved_by }} {{ object.note }}</p>
+        <form action="{% url 'inventory:receive_order' object.pk %}" method="post">
+            {% csrf_token %}
+            <button type="submit">入荷済みにする(発注数量を在庫へ反映)</button>
+        </form>
     {% else %}
         <p>{{ object.sent_at|date:'Y/m/d H:i' }} 承認: {{ object.approved_by }} {{ object.note }}</p>
     {% endif %}

@@ -15,7 +15,8 @@ def create_restock_tasks_on_open(sender, business_day, user=None, **kwargs):
     if arrived:
         ChecklistTask.objects.get_or_create(
             business_day=business_day,
-            title=f"品出し(本日入荷): {'、'.join(arrived[:10])}",
+            # title は max_length=200。商品名が多い日でも超過しないよう切り詰める
+            title=f"品出し(本日入荷): {'、'.join(arrived[:10])}"[:200],
             defaults={'order': 910},
         )
 
@@ -24,6 +25,6 @@ def create_restock_tasks_on_open(sender, business_day, user=None, **kwargs):
         names = '、'.join(p.name for p in low[:10])
         ChecklistTask.objects.get_or_create(
             business_day=business_day,
-            title=f'在庫僅少を確認し発注案を承認する: {names}',
+            title=f'在庫僅少を確認し発注案を承認する: {names}'[:200],
             defaults={'order': 920},
         )

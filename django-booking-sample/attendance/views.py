@@ -91,11 +91,16 @@ class MonthlyCsvExport(LoginRequiredMixin, UserPassesTestMixin, generic.View):
             .select_related('staff')
             .order_by('staff__name', 'date')
         )
+        # 打刻1行ごとにシフトを引かない(当月分を一括ロードして突合する)
+        shifts_by_key = {
+            (s.staff_id, s.date): s
+            for s in Shift.objects.filter(
+                staff__store=store, date__gte=first, date__lt=next_month
+            ).exclude(status=Shift.STATUS_ABSENT)
+        }
+        tz = timezone.get_current_timezone()
         for record in records:
-            shift = Shift.objects.filter(staff=record.staff, date=record.date).exclude(
-                status=Shift.STATUS_ABSENT
-            ).first()
-            tz = timezone.get_current_timezone()
+            shift = shifts_by_key.get((record.staff_id, record.date))
             writer.writerow([
                 record.staff.name,
                 record.date.isoformat(),

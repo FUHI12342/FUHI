@@ -11,6 +11,7 @@ from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views import generic
 from django.views.decorators.http import require_POST
+from .access import user_belongs_to_store
 from .models import Seat, Schedule, Staff, Store, WalkIn
 
 
@@ -223,10 +224,6 @@ class MyPageScheduleDelete(OnlyScheduleMixin, generic.DeleteView):
 
 
 
-def _user_belongs_to_store(user, store):
-    return user.is_superuser or Staff.objects.filter(user=user, store=store).exists()
-
-
 class SeatBoard(LoginRequiredMixin, UserPassesTestMixin, generic.TemplateView):
     """当日の座席ボード。時間帯×座席のグリッドで予約とウォークインを可視化する。"""
     template_name = 'booking/seat_board.html'
@@ -234,7 +231,7 @@ class SeatBoard(LoginRequiredMixin, UserPassesTestMixin, generic.TemplateView):
 
     def test_func(self):
         store = get_object_or_404(Store, pk=self.kwargs['pk'])
-        return _user_belongs_to_store(self.request.user, store)
+        return user_belongs_to_store(self.request.user, store)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -269,24 +266,26 @@ class SeatBoard(LoginRequiredMixin, UserPassesTestMixin, generic.TemplateView):
 @require_POST
 def walkin_start(request, seat_pk):
     seat = get_object_or_404(Seat, pk=seat_pk)
-    if not request.user.is_authenticated or not _user_belongs_to_store(request.user, seat.store):
+    if not request.user.is_authenticated or not user_belongs_to_store(request.user, seat.store):
         raise PermissionDenied
     try:
         party_size = int(request.POST.get('party_size', '1'))
     except ValueError:
         party_size = 1
-    if WalkIn.objects.filter(seat=seat, left_at__isnull=True).exists():
-        messages.error(request, f'{seat.name} は使用中です。')
-    else:
-        WalkIn.objects.create(seat=seat, party_size=max(1, party_size))
+    try:
+        # 同時タップの競合は DB の部分UNIQUE制約(unique_active_walkin_per_seat)で防ぐ
+        with transaction.atomic():
+            WalkIn.objects.create(seat=seat, party_size=max(1, party_size))
         messages.success(request, f'{seat.name} に{party_size}名 着席。')
+    except IntegrityError:
+        messages.error(request, f'{seat.name} は使用中です。')
     return redirect('booking:seat_board', pk=seat.store.pk)
 
 
 @require_POST
 def walkin_end(request, pk):
     walkin = get_object_or_404(WalkIn.objects.select_related('seat__store'), pk=pk)
-    if not request.user.is_authenticated or not _user_belongs_to_store(request.user, walkin.seat.store):
+    if not request.user.is_authenticated or not user_belongs_to_store(request.user, walkin.seat.store):
         raise PermissionDenied
     if walkin.left_at is None:
         walkin.left_at = timezone.now()

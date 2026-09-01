@@ -2,6 +2,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from . import timeslots
+
 
 class Store(models.Model):
     """店舗"""
@@ -52,21 +54,13 @@ class Store(models.Model):
         """予約枠の対象となる時刻(時)のリスト。閉店時刻の枠は含まない。
 
         24以上の値は翌日早朝の枠(25 = 翌1時)。表示・URLにはこの値をそのまま使い、
-        実時刻への変換は booking.views.make_aware_datetime が行う。
+        実時刻への変換は booking.timeslots が行う。
         """
         return range(self.opening_hour, self.closing_hour)
 
     def business_slot(self, local_dt):
-        """aware datetime(ローカル時刻)を(営業日, 枠時刻)に変換する。
-
-        深夜営業の店では翌日早朝(閉店-24時より前)の時刻を、前日の 24+h 枠として扱う。
-        """
-        import datetime as _dt
-        hour = local_dt.hour
-        date = local_dt.date()
-        if self.closing_hour > 24 and hour < self.closing_hour - 24:
-            return date - _dt.timedelta(days=1), hour + 24
-        return date, hour
+        """aware datetime(ローカル時刻)を(営業日, 枠時刻)に変換する。"""
+        return timeslots.business_slot(self, local_dt)
 
 
 class Staff(models.Model):

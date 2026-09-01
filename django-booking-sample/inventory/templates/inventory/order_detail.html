@@ -1,0 +1,24 @@
+{% extends 'booking/base.html' %}
+
+{% block content %}
+    <h1>発注: {{ object.supplier.name }} 宛({{ object.get_status_display }})</h1>
+
+    <h2>発注書(コピー用)</h2>
+    <textarea rows="12" cols="60" readonly>{{ order_text }}</textarea>
+
+    {% if object.status == 'proposed' %}
+        <form action="{% url 'inventory:approve_order' object.pk %}" method="post" style="display:inline">
+            {% csrf_token %}
+            <button type="submit">承認して発注する</button>
+        </form>
+        <form action="{% url 'inventory:cancel_order' object.pk %}" method="post" style="display:inline">
+            {% csrf_token %}
+            <button type="submit">取り消す</button>
+        </form>
+        <p><small>仕入先にメールアドレスが設定されていれば発注書メールを送信します。未設定なら上のテキストを電話/FAX/LINEで送付してください。</small></p>
+    {% else %}
+        <p>{{ object.sent_at|date:'Y/m/d H:i' }} 承認: {{ object.approved_by }} {{ object.note }}</p>
+    {% endif %}
+
+    <p><a href="{% url 'inventory:stock_list' object.store.pk %}">在庫一覧へ戻る</a></p>
+{% endblock %}

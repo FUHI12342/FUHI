@@ -23,6 +23,7 @@ urlpatterns = [
     path('attendance/', include('attendance.urls')),
     path('ops/', include('operations.urls')),
     path('sns/', include('sns.urls')),
+    path('inventory/', include('inventory.urls')),
     path('', include('booking.urls')),
 ]
 

@@ -1,0 +1,43 @@
+{% extends 'booking/base.html' %}
+
+{% block content %}
+    <h1>{{ store.name }} 在庫・発注</h1>
+
+    <h2>在庫一覧</h2>
+    <table border="1" style="border-collapse:collapse">
+        <tr><th>品名</th><th>現在庫</th><th>発注点</th><th>仕入先</th><th>入荷登録</th></tr>
+        {% for product in products %}
+            <tr>
+                <td>{{ product.name }}{% if product.sns_announce %} 📣{% endif %}</td>
+                <td {% if product.is_below_reorder_point %}style="color:red;font-weight:bold"{% endif %}>
+                    {{ product.current_stock }}{{ product.unit }}
+                </td>
+                <td>{{ product.reorder_point }}</td>
+                <td>{{ product.supplier|default:'-' }}</td>
+                <td>
+                    <form action="{% url 'inventory:record_arrival' product.pk %}" method="post" style="display:inline">
+                        {% csrf_token %}
+                        <input type="number" name="quantity" value="{{ product.order_lot }}" min="1" style="width:4em">
+                        <button type="submit">入荷</button>
+                    </form>
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="5">商品が未登録です。管理画面から登録してください。</td></tr>
+        {% endfor %}
+    </table>
+
+    <form action="{% url 'inventory:generate_proposals' store.pk %}" method="post" style="margin-top:1em">
+        {% csrf_token %}
+        <button type="submit">発注点割れの商品から発注案を生成</button>
+    </form>
+
+    <h2>発注</h2>
+    <ul>
+        {% for order in orders %}
+            <li><a href="{% url 'inventory:order_detail' order.pk %}">{{ order.created_at|date:'m/d H:i' }} {{ order }}</a></li>
+        {% empty %}
+            <li>発注はありません。</li>
+        {% endfor %}
+    </ul>
+{% endblock %}

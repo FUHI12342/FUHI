@@ -45,5 +45,8 @@
         {% endfor %}
     </ul>
 
-    <p><a href="{% url 'booking:seat_board' store.pk %}">座席ボードを見る</a></p>
+    <p>
+        <a href="{% url 'booking:seat_board' store.pk %}">座席ボードを見る</a> /
+        <a href="{% url 'sns:draft_list' store.pk %}">SNS投稿を確認・承認する</a>
+    </p>
 {% endblock %}

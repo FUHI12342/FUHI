@@ -1,0 +1,21 @@
+{% extends 'booking/base.html' %}
+
+{% block content %}
+    <h1>{{ store.name }} SNS投稿一覧</h1>
+    <form action="{% url 'sns:regenerate' store.pk %}" method="post">
+        {% csrf_token %}
+        <button type="submit">本日の下書きを生成/再生成</button>
+    </form>
+    <ul>
+        {% for draft in object_list %}
+            <li>
+                <a href="{% url 'sns:draft_detail' draft.pk %}">{{ draft.date }} - {{ draft.get_status_display }}</a>
+                {% for result in draft.results.all %}
+                    [{{ result.platform }}: {{ result.get_status_display }}]
+                {% endfor %}
+            </li>
+        {% empty %}
+            <li>下書きはまだありません。</li>
+        {% endfor %}
+    </ul>
+{% endblock %}

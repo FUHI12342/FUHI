@@ -1,5 +1,6 @@
 import logging
 
+from django.db import transaction
 from django.utils import timezone
 
 from attendance.models import confirm_shifts
@@ -27,8 +28,16 @@ def open_store(business_day, user=None):
     シグナルレシーバの例外は開店操作全体を止めず、警告タスクとして
     チェックリストに載せる(自動化の失敗を人間が検知する場所)。
     """
-    if business_day.status == BusinessDay.STATUS_OPEN:
-        return business_day
+    # 二重クリック等の並行実行を防ぐ(PostgreSQL では行ロック。SQLite では no-op だが
+    # 受け側処理はすべて冪等なので実害はない)。ロック取得後に状態を再確認する。
+    with transaction.atomic():
+        locked = BusinessDay.objects.select_for_update().get(pk=business_day.pk)
+        if locked.status == BusinessDay.STATUS_OPEN:
+            return locked
+        locked.status = BusinessDay.STATUS_OPEN
+        locked.opened_at = timezone.now()
+        locked.save(update_fields=['status', 'opened_at'])
+    business_day.refresh_from_db()
 
     confirmed = confirm_shifts(business_day.store, business_day.date)
     logger.info('confirmed %s shifts for %s', confirmed, business_day)
@@ -45,9 +54,6 @@ def open_store(business_day, user=None):
                 alert=str(response)[:255],
             )
 
-    business_day.status = BusinessDay.STATUS_OPEN
-    business_day.opened_at = timezone.now()
-    business_day.save(update_fields=['status', 'opened_at'])
     return business_day
 
 

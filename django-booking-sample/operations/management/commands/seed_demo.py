@@ -36,7 +36,7 @@ class Command(BaseCommand):
         store, _ = Store.objects.get_or_create(
             name='デモ店舗', defaults={
                 'business_type': Store.TYPE_RESTAURANT,
-                'opening_hour': 18, 'closing_hour': 24,
+                'opening_hour': 18, 'closing_hour': 26,  # 18時-翌2時(深夜営業)
             }
         )
 

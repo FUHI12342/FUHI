@@ -15,6 +15,28 @@ def is_configured():
     return bool(os.environ.get('GBP_ACCESS_TOKEN') and os.environ.get('GBP_LOCATION'))
 
 
+def special_hours_payload(business_day):
+    """specialHours のペイロードを組み立てる。
+
+    深夜営業(閉店>24時)は endDate を翌日にし、closeTime を 0-23時 に正規化する。
+    """
+    import datetime
+
+    date = business_day.date
+    closing = business_day.closing_hour
+    period = {
+        'startDate': {'year': date.year, 'month': date.month, 'day': date.day},
+        'openTime': {'hours': business_day.opening_hour},
+    }
+    if closing > 24:
+        end = date + datetime.timedelta(days=1)
+        period['endDate'] = {'year': end.year, 'month': end.month, 'day': end.day}
+        period['closeTime'] = {'hours': closing - 24}
+    else:
+        period['closeTime'] = {'hours': closing}
+    return {'specialHours': {'specialHourPeriods': [period]}}
+
+
 def sync_special_hours(business_day):
     """臨時営業時間を GBP の specialHours に反映する。
 
@@ -22,16 +44,7 @@ def sync_special_hours(business_day):
     """
     token = os.environ['GBP_ACCESS_TOKEN']
     location = os.environ['GBP_LOCATION']  # 例: locations/1234567890
-    date = business_day.date
-    payload = {
-        'specialHours': {
-            'specialHourPeriods': [{
-                'startDate': {'year': date.year, 'month': date.month, 'day': date.day},
-                'openTime': {'hours': business_day.opening_hour},
-                'closeTime': {'hours': business_day.closing_hour},
-            }]
-        }
-    }
+    payload = special_hours_payload(business_day)
     request = urllib.request.Request(
         f'{API}/{location}?updateMask=specialHours',
         data=json.dumps(payload).encode(),

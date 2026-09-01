@@ -19,8 +19,11 @@ User = get_user_model()
 
 
 def make_aware_datetime(year, month, day, hour):
-    """URLパラメータの年月日時を、現在のタイムゾーンの aware datetime にする。"""
-    naive = datetime.datetime(year=year, month=month, day=day, hour=hour)
+    """URLパラメータの年月日時を、現在のタイムゾーンの aware datetime にする。
+
+    hour は 24 以上を許容する(深夜営業の枠。25 = 翌日1時)。
+    """
+    naive = datetime.datetime(year=year, month=month, day=day) + datetime.timedelta(hours=hour)
     return timezone.make_aware(naive, timezone.get_current_timezone())
 
 
@@ -104,8 +107,7 @@ class StaffCalendar(generic.TemplateView):
         end_time = make_aware_datetime(end_day.year, end_day.month, end_day.day, hours[-1])
         for schedule in Schedule.objects.filter(staff=staff).exclude(Q(start__gt=end_time) | Q(end__lt=start_time)):
             local_dt = timezone.localtime(schedule.start)
-            booking_date = local_dt.date()
-            booking_hour = local_dt.hour
+            booking_date, booking_hour = staff.store.business_slot(local_dt)
             if booking_hour in calendar and booking_date in calendar[booking_hour]:
                 calendar[booking_hour][booking_date] = False
 
@@ -201,9 +203,8 @@ class MyPageDayDetail(OnlyStaffMixin, generic.TemplateView):
         end_time = make_aware_datetime(date.year, date.month, date.day, hours[-1])
         for schedule in Schedule.objects.filter(staff=staff).exclude(Q(start__gt=end_time) | Q(end__lt=start_time)):
             local_dt = timezone.localtime(schedule.start)
-            booking_date = local_dt.date()
-            booking_hour = local_dt.hour
-            if booking_hour in calendar:
+            booking_date, booking_hour = staff.store.business_slot(local_dt)
+            if booking_hour in calendar and booking_date == date:
                 calendar[booking_hour].append(schedule)
 
         context['calendar'] = calendar
@@ -240,15 +241,18 @@ class SeatBoard(LoginRequiredMixin, UserPassesTestMixin, generic.TemplateView):
         seats = list(store.seats.filter(is_active=True))
         hours = store.business_hours
 
-        day_start = make_aware_datetime(date.year, date.month, date.day, 0)
-        day_end = day_start + datetime.timedelta(days=1)
+        # 営業時間の範囲で当日の予約を取得(深夜営業では翌日早朝まで含む)
+        day_start = make_aware_datetime(date.year, date.month, date.day, hours[0])
+        day_end = make_aware_datetime(date.year, date.month, date.day, hours[-1]) + datetime.timedelta(hours=1)
         schedules = Schedule.objects.filter(
             seat__store=store, start__gte=day_start, start__lt=day_end
         ).select_related('seat')
         by_seat_hour = {}
         for schedule in schedules:
             local = timezone.localtime(schedule.start)
-            by_seat_hour[(schedule.seat_id, local.hour)] = schedule
+            slot_date, slot_hour = store.business_slot(local)
+            if slot_date == date:
+                by_seat_hour[(schedule.seat_id, slot_hour)] = schedule
 
         rows = []
         for hour in hours:

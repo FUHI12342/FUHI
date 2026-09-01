@@ -205,7 +205,28 @@
 
 ---
 
-## 5. 分類サマリ
+## 5. 実装状況(2026-09-01 更新)
+
+Phase 0〜3 の実装をブランチ `claude/store-opening-automation-bok4kj` 上で完了。全91テスト通過。
+
+| フェーズ | 状態 | 実装 |
+|---|---|---|
+| Phase 0 | ✅ 完了 | Django 5.2 LTS 化、Secrets 環境変数化、TZバグ修正、営業時間の設定化、二重予約のDB制約、祝日の動的生成 |
+| Phase 1 | ✅ 完了 | `operations`(営業日・チェックリスト・開店連鎖シグナル)、`attendance`(シフト・打刻・月次CSV)、`booking` 拡張(Staff拡張・業態フラグ・Seat・座席ボード・WalkIn)、Dockerfile(Cloud Run 用) |
+| Phase 2 | ✅ 完了 | `sns`(テンプレート文面生成・Pillow画像合成・下書き→承認→配信フロー・Threads/X/Instagram アダプタ+手動フォールバック) |
+| Phase 3 | ✅ 完了 | `inventory`(商品・入出庫・発注点・仕入先別発注案生成+承認送信・品出しタスク連動・SNS入荷差し込み)、GBP specialHours 同期(未設定時はリマインダーに格下げ) |
+
+### 運用開始時に必要な設定(コード外)
+
+| 項目 | 内容 |
+|---|---|
+| SNS API | `THREADS_ACCESS_TOKEN`/`THREADS_USER_ID`、`IG_ACCESS_TOKEN`/`IG_USER_ID`(要 Meta アプリレビュー)、`X_*` 4種(要有料プラン判断+ requests-oauthlib 導入)。未設定でも手動コピペ運用で成立 |
+| 画像公開URL | `PUBLIC_MEDIA_BASE_URL`(Cloud Storage 公開バケット。Instagram 投稿の前提) |
+| GBP | `GBP_ACCESS_TOKEN`/`GBP_LOCATION`(API 利用承認が取れた場合のみ) |
+| メール | `DJANGO_EMAIL_*`(発注書メール送信用 SMTP) |
+| フォント | `SNS_IMAGE_FONT`(日本語フォントのパス。Noto CJK 等) |
+
+## 6. 分類サマリ
 
 | 機能 | 実装済み | 実装済み・改修推奨 | 新規構築 | 判定 |
 |---|---|---|---|---|

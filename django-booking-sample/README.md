@@ -24,6 +24,18 @@ python manage.py runserver
 | `DJANGO_ALLOWED_HOSTS` | カンマ区切りのホスト名 |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | カンマ区切りのオリジン(リバースプロキシ配下用) |
 
+## 主な画面
+
+| URL | 内容 |
+|---|---|
+| `/` | 店舗一覧・予約カレンダー(既存) |
+| `/ops/store/<id>/today/` | 開店ダッシュボード(チェックリスト・開閉店・当日シフト) |
+| `/attendance/` | 自分の勤怠(出退勤打刻) |
+| `/store/<id>/seats/` | 座席ボード(予約・ウォークイン) |
+| `/sns/store/<id>/drafts/` | SNS投稿の下書き確認・承認 |
+| `/inventory/store/<id>/` | 在庫一覧・入荷登録・発注案 |
+| `/admin/` | マスタ管理(座席・シフト・チェックリスト雛形・商品・テンプレート等) |
+
 ## テストする
 
 ```

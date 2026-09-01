@@ -19,6 +19,14 @@ class Store(models.Model):
     opening_hour = models.PositiveSmallIntegerField('開店時刻(時)', default=9)
     closing_hour = models.PositiveSmallIntegerField('閉店時刻(時)', default=18)
 
+    # 機能フラグ(店舗ごとにオン/オフ)。オフの機能は画面が404になり、
+    # 開店時の自動処理からも除外される。予約カレンダー・チェックリスト・勤怠は
+    # 基盤機能のためフラグ化しない。
+    enable_sns = models.BooleanField('SNS投稿機能', default=True)
+    enable_inventory = models.BooleanField('在庫・発注機能', default=True)
+    enable_seat_board = models.BooleanField('座席ボード', default=True)
+    enable_gbp = models.BooleanField('Googleマップ(GBP)連携', default=True)
+
     class Meta:
         constraints = [
             # 開店<閉店、閉店は30時(翌6時)まで、営業は最長24時間。

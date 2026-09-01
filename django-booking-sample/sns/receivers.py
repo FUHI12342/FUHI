@@ -12,6 +12,8 @@ def generate_draft_on_open(sender, business_day, user=None, **kwargs):
 
     投稿の確定は必ず人間の承認操作(sns:draft_detail)で行う。ここでは生成まで。
     """
+    if not business_day.store.enable_sns:
+        return
     services.generate_draft(business_day.store, business_day.date)
     ChecklistTask.objects.get_or_create(
         business_day=business_day,

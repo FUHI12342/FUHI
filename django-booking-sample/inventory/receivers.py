@@ -10,6 +10,8 @@ from . import services
 def create_restock_tasks_on_open(sender, business_day, user=None, **kwargs):
     """開店時に品出し・発注確認タスクをチェックリストへ反映する(要件F-3)。"""
     store = business_day.store
+    if not store.enable_inventory:
+        return
 
     arrived = services.arrived_product_names(store, business_day.date)
     if arrived:

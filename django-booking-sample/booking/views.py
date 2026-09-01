@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
+from django.http import Http404
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
@@ -232,6 +233,8 @@ class SeatBoard(LoginRequiredMixin, UserPassesTestMixin, generic.TemplateView):
 
     def test_func(self):
         store = get_object_or_404(Store, pk=self.kwargs['pk'])
+        if not store.enable_seat_board:
+            raise Http404('この店舗では座席ボードが無効です。')
         return user_belongs_to_store(self.request.user, store)
 
     def get_context_data(self, **kwargs):
@@ -270,6 +273,8 @@ class SeatBoard(LoginRequiredMixin, UserPassesTestMixin, generic.TemplateView):
 @require_POST
 def walkin_start(request, seat_pk):
     seat = get_object_or_404(Seat, pk=seat_pk)
+    if not seat.store.enable_seat_board:
+        raise Http404('この店舗では座席ボードが無効です。')
     if not request.user.is_authenticated or not user_belongs_to_store(request.user, seat.store):
         raise PermissionDenied
     try:
@@ -289,6 +294,8 @@ def walkin_start(request, seat_pk):
 @require_POST
 def walkin_end(request, pk):
     walkin = get_object_or_404(WalkIn.objects.select_related('seat__store'), pk=pk)
+    if not walkin.seat.store.enable_seat_board:
+        raise Http404('この店舗では座席ボードが無効です。')
     if not request.user.is_authenticated or not user_belongs_to_store(request.user, walkin.seat.store):
         raise PermissionDenied
     if walkin.left_at is None:

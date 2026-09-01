@@ -4,6 +4,7 @@ from django.db.models import Sum
 from django.db.models.functions import Coalesce
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.exceptions import PermissionDenied
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.views import generic
@@ -22,6 +23,8 @@ class StockList(LoginRequiredMixin, UserPassesTestMixin, generic.TemplateView):
 
     def test_func(self):
         store = get_object_or_404(Store, pk=self.kwargs['store_pk'])
+        if not store.enable_inventory:
+            raise Http404('この店舗では在庫・発注機能が無効です。')
         return user_belongs_to_store(self.request.user, store)
 
     def get_context_data(self, **kwargs):
@@ -42,6 +45,8 @@ class StockList(LoginRequiredMixin, UserPassesTestMixin, generic.TemplateView):
 @login_required
 def record_arrival(request, product_pk):
     product = get_object_or_404(Product, pk=product_pk)
+    if not product.store.enable_inventory:
+        raise Http404('この店舗では在庫・発注機能が無効です。')
     if not user_belongs_to_store(request.user, product.store):
         raise PermissionDenied
     try:
@@ -63,6 +68,8 @@ def record_arrival(request, product_pk):
 @login_required
 def generate_proposals(request, store_pk):
     store = get_object_or_404(Store, pk=store_pk)
+    if not store.enable_inventory:
+        raise Http404('この店舗では在庫・発注機能が無効です。')
     if not user_belongs_to_store(request.user, store):
         raise PermissionDenied
     orders = services.generate_order_proposals(store)
@@ -80,6 +87,8 @@ class OrderDetail(LoginRequiredMixin, UserPassesTestMixin, generic.DetailView):
 
     def test_func(self):
         order = get_object_or_404(PurchaseOrder, pk=self.kwargs['pk'])
+        if not order.store.enable_inventory:
+            raise Http404('この店舗では在庫・発注機能が無効です。')
         return user_belongs_to_store(self.request.user, order.store)
 
     def get_context_data(self, **kwargs):
@@ -92,6 +101,8 @@ class OrderDetail(LoginRequiredMixin, UserPassesTestMixin, generic.DetailView):
 @login_required
 def approve_order(request, pk):
     order = get_object_or_404(PurchaseOrder.objects.select_related('supplier', 'store'), pk=pk)
+    if not order.store.enable_inventory:
+        raise Http404('この店舗では在庫・発注機能が無効です。')
     if not user_belongs_to_store(request.user, order.store, require_manager=True):
         raise PermissionDenied
     if order.status != PurchaseOrder.STATUS_PROPOSED:
@@ -109,6 +120,8 @@ def approve_order(request, pk):
 @login_required
 def receive_order(request, pk):
     order = get_object_or_404(PurchaseOrder.objects.select_related('store'), pk=pk)
+    if not order.store.enable_inventory:
+        raise Http404('この店舗では在庫・発注機能が無効です。')
     if not user_belongs_to_store(request.user, order.store, require_manager=True):
         raise PermissionDenied
     if order.status != PurchaseOrder.STATUS_SENT:
@@ -123,6 +136,8 @@ def receive_order(request, pk):
 @login_required
 def cancel_order(request, pk):
     order = get_object_or_404(PurchaseOrder.objects.select_related('store'), pk=pk)
+    if not order.store.enable_inventory:
+        raise Http404('この店舗では在庫・発注機能が無効です。')
     if not user_belongs_to_store(request.user, order.store, require_manager=True):
         raise PermissionDenied
     if order.status == PurchaseOrder.STATUS_PROPOSED:

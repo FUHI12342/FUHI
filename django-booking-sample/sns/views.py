@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.exceptions import PermissionDenied
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.views import generic
@@ -20,6 +21,8 @@ class DraftList(LoginRequiredMixin, UserPassesTestMixin, generic.ListView):
 
     def test_func(self):
         store = get_object_or_404(Store, pk=self.kwargs['store_pk'])
+        if not store.enable_sns:
+            raise Http404('この店舗ではSNS投稿機能が無効です。')
         return user_belongs_to_store(self.request.user, store)
 
     def get_queryset(self):
@@ -39,6 +42,8 @@ class DraftDetail(LoginRequiredMixin, UserPassesTestMixin, generic.DetailView):
 
     def test_func(self):
         draft = get_object_or_404(PostDraft, pk=self.kwargs['pk'])
+        if not draft.store.enable_sns:
+            raise Http404('この店舗ではSNS投稿機能が無効です。')
         return user_belongs_to_store(self.request.user, draft.store)
 
 
@@ -46,6 +51,8 @@ class DraftDetail(LoginRequiredMixin, UserPassesTestMixin, generic.DetailView):
 @login_required
 def regenerate(request, store_pk):
     store = get_object_or_404(Store, pk=store_pk)
+    if not store.enable_sns:
+        raise Http404('この店舗ではSNS投稿機能が無効です。')
     if not user_belongs_to_store(request.user, store):
         raise PermissionDenied
     draft = services.generate_draft(store, timezone.localdate())
@@ -57,6 +64,8 @@ def regenerate(request, store_pk):
 @login_required
 def approve(request, pk):
     draft = get_object_or_404(PostDraft, pk=pk)
+    if not draft.store.enable_sns:
+        raise Http404('この店舗ではSNS投稿機能が無効です。')
     if not user_belongs_to_store(request.user, draft.store, require_manager=True):
         raise PermissionDenied
     if draft.status == PostDraft.STATUS_APPROVED:

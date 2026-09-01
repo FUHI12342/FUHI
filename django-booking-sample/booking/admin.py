@@ -4,7 +4,11 @@ from .models import Seat, Schedule, Staff, Store, WalkIn
 
 @admin.register(Store)
 class StoreAdmin(admin.ModelAdmin):
-    list_display = ('name', 'business_type', 'opening_hour', 'closing_hour')
+    list_display = (
+        'name', 'business_type', 'opening_hour', 'closing_hour',
+        'enable_sns', 'enable_inventory', 'enable_seat_board', 'enable_gbp',
+    )
+    list_editable = ('enable_sns', 'enable_inventory', 'enable_seat_board', 'enable_gbp')
 
 
 @admin.register(Staff)

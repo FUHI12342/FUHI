@@ -46,8 +46,8 @@
     </ul>
 
     <p>
-        <a href="{% url 'booking:seat_board' store.pk %}">座席ボードを見る</a> /
-        <a href="{% url 'sns:draft_list' store.pk %}">SNS投稿を確認・承認する</a> /
-        <a href="{% url 'inventory:stock_list' store.pk %}">在庫・発注を確認する</a>
+        {% if store.enable_seat_board %}<a href="{% url 'booking:seat_board' store.pk %}">座席ボードを見る</a>{% endif %}
+        {% if store.enable_sns %}<a href="{% url 'sns:draft_list' store.pk %}">SNS投稿を確認・承認する</a>{% endif %}
+        {% if store.enable_inventory %}<a href="{% url 'inventory:stock_list' store.pk %}">在庫・発注を確認する</a>{% endif %}
     </p>
 {% endblock %}

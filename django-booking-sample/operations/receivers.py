@@ -12,6 +12,8 @@ def sync_gbp_on_open(sender, business_day, user=None, **kwargs):
     - API設定済み → specialHours を自動反映(失敗は open_store が警告タスク化)
     - 未設定 → 手動更新のリマインダータスクに格下げ(毎日は出さない。変更がある日だけ)
     """
+    if not business_day.store.enable_gbp:
+        return
     has_override = (
         business_day.opening_hour_override is not None
         or business_day.closing_hour_override is not None

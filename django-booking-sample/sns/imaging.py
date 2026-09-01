@@ -15,15 +15,21 @@ ACCENT = (240, 200, 80)
 TEXT_COLOR = (255, 255, 255)
 
 
+def _font_candidates():
+    yield os.environ.get('SNS_IMAGE_FONT', '')
+    yield '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'
+    yield '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc'
+    yield '/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf'
+    yield '/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc'
+    # Debian の fonts-noto-cjk はバージョンによりファイル名が異なる(VF版など)ため走査する
+    import glob
+    for pattern in ('/usr/share/fonts/**/*CJK*.ttc', '/usr/share/fonts/**/*CJK*.otf'):
+        yield from glob.glob(pattern, recursive=True)
+
+
 def _load_font(size):
     """日本語グリフを持つフォントを探す。無ければ Pillow デフォルト。"""
-    candidates = [os.environ.get('SNS_IMAGE_FONT', '')] + [
-        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-        '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
-        '/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf',
-        '/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc',
-    ]
-    for path in candidates:
+    for path in _font_candidates():
         if path and os.path.exists(path):
             try:
                 return ImageFont.truetype(path, size)

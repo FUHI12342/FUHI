@@ -4,6 +4,7 @@
 動作し(GBP_ACCESS_TOKEN / GBP_LOCATION を設定)、未設定なら呼び出し側が
 「手動更新リマインダー」へ格下げする(要件定義 §2-C の敵対的レビュー結論)。
 """
+import datetime
 import json
 import os
 import urllib.request
@@ -20,8 +21,6 @@ def special_hours_payload(business_day):
 
     深夜営業(閉店>24時)は endDate を翌日にし、closeTime を 0-23時 に正規化する。
     """
-    import datetime
-
     date = business_day.date
     closing = business_day.closing_hour
     period = {

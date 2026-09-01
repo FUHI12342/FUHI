@@ -205,83 +205,45 @@
 
 ---
 
-## 5. 実装状況(2026-09-01 更新)
+## 5. 実装済み管理表(現在の状態)
 
-Phase 0〜3 の実装をブランチ `claude/store-opening-automation-bok4kj` 上で完了。全91テスト通過。
+すべて main にマージ済み。履歴は [CHANGELOG.md](CHANGELOG.md)、未着手は [backlog.md](backlog.md)。
 
-| フェーズ | 状態 | 実装 |
-|---|---|---|
-| Phase 0 | ✅ 完了 | Django 5.2 LTS 化、Secrets 環境変数化、TZバグ修正、営業時間の設定化、二重予約のDB制約、祝日の動的生成 |
-| Phase 1 | ✅ 完了 | `operations`(営業日・チェックリスト・開店連鎖シグナル)、`attendance`(シフト・打刻・月次CSV)、`booking` 拡張(Staff拡張・業態フラグ・Seat・座席ボード・WalkIn)、Dockerfile(Cloud Run 用) |
-| Phase 2 | ✅ 完了 | `sns`(テンプレート文面生成・Pillow画像合成・下書き→承認→配信フロー・Threads/X/Instagram アダプタ+手動フォールバック) |
-| Phase 3 | ✅ 完了 | `inventory`(商品・入出庫・発注点・仕入先別発注案生成+承認送信・品出しタスク連動・SNS入荷差し込み)、GBP specialHours 同期(未設定時はリマインダーに格下げ) |
-
-### 5.1 改修ラウンド(2026-09-01、ブランチ `claude/hardening-review-bok4kj`)
-
-Phase 0〜3 完了後、main との全差分に対して敵対的コードレビューを実施。10件の指摘を検証し、全件対応した。
-
-| # | 指摘 | 深刻度 | 対応 |
-|---|---|---|---|
-| 1 | SNS配信が AdapterError 以外の例外(生のネットワーク例外)で中断し、承認済みのまま残プラットフォームが再試行不能になる | 高 | 例外を全捕捉して失敗記録+ループ続行。承認済み下書きへの再POSTで失敗・未記録分のみ再配信する `retry_unfinished` を追加 |
-| 2 | 営業時間が深夜跨ぎ(18時-翌2時)や24時超えだとカレンダー・座席ボードが500 | 高 | DB制約(開店<閉店 かつ 閉店≦24)で不正値を遮断。深夜営業の本対応は backlog C-1 として設計済み |
-| 3 | 発注が一度「発注済み」になると商品が永久に再提案されなくなる | 高 | 「入荷済み」ステータス+入荷反映ボタンを追加。さらに送信後30日でブロック自動解除の安全弁 |
-| 4 | 承認済みの日に再生成すると同日2件目の下書きができ二重投稿が可能 | 高 | 承認済みは再生成不可+ (store, date) のUNIQUE制約 |
-| 5 | DEBUG デフォルト true・SECRET_KEY サイレントフォールバックで本番がフェイルオープン | 高 | DEBUG=false 時に開発用キーのままなら起動拒否。Dockerfile に DJANGO_DEBUG=false を焼き込み |
-| 6 | ウォークイン着席が check-then-act で同時タップ時に二重着席 | 中 | 部分UNIQUE制約(座席×着席中)+IntegrityError 処理 |
-| 7 | 店舗メンバー判定ヘルパーが2箇所に重複定義 | 中 | `booking/access.py` に一本化し全アプリから import |
-| 8 | 在庫一覧が商品ごとに集計クエリを発行(N+1) | 中 | annotate による1クエリ化 |
-| 9 | Pillow>=10.0 だとフォント無し環境のフォールバックが TypeError | 中 | Pillow>=10.1 にピン |
-| 10 | 勤怠CSVが打刻1行ごとにシフトを検索(N+1) | 低 | 当月分を一括ロードして突合 |
-
-### 5.2 次ラウンド(2026-09-01、main マージ後)
-
-改修ラウンドは PR #1 で main にマージ済み。その後、バックログの採用3件を実装した。
-
-| 項目 | 状態 | 内容 |
-|---|---|---|
-| 店長ロール | ✅ 完了 | `Staff.is_manager` により承認系操作(SNS承認・発注承認/取消/入荷・開閉店・勤怠CSV)を店長限定に。権限マトリクスは [operations-model.md](operations-model.md) |
-| PostgreSQL対応 | ✅ 完了 | `DATABASE_URL` で切替(Cloud SQL Unixソケット対応、パーサに単体テスト) |
-| エラートラッキング | ✅ 完了 | `SENTRY_DSN` 設定時のみ有効、PII送信なし |
-| 本番セキュリティ設定 | ✅ 完了 | `check --deploy` 警告解消(HTTPS強制・secure cookie・HSTS)。変更差分へのセキュリティレビューを実施し指摘0件 |
-| 運用想定 | ✅ 完了 | [operations-model.md](operations-model.md): 日次フロー・役割分担・障害時フォールバック・監視 |
-
-### 5.3 深夜営業対応ラウンド(2026-09-01)
-
-| 項目 | 状態 | 内容 |
-|---|---|---|
-| 深夜営業対応(C-1) | ✅ 完了 | 閉店時刻を30時(翌6時)まで許可。カレンダー・座席ボードは25時・26時表記、翌日早朝の予約は前営業日の枠として扱う(`Store.business_slot`)。GBP specialHours の日跨ぎ対応。営業24時間超はDB制約で禁止。閉店24時以内の店舗には挙動変更なし |
-| 開店処理の排他(H-1) | ✅ 完了 | `select_for_update` で営業日をロックし開店状態を先に確定(二重クリック対策) |
-
-### 5.4 機能フラグラウンド(2026-09-01)
-
-| 項目 | 状態 | 内容 |
-|---|---|---|
-| 店舗ごとの機能フラグ | ✅ 完了 | SNS投稿・在庫発注・座席ボード・GBP連携を admin からオン/オフ可能(デフォルト全オン、オフは画面404+開店連鎖から除外)。予約・チェックリスト・勤怠は基盤機能のため対象外 |
-| 予約導線の確定 | ✅ 方針決定 | 「Web予約のみ」を正とする(operations-model.md に運用ルール記載)。これに伴い顧客向け座席予約UI(C-2)を次ラウンド採用へ昇格 |
-
-未実装項目の棚卸しと実装前検証の結果は [backlog.md](backlog.md) を参照。
-残タスクは GitHub Issues で管理する(顧客向け座席予約UI、X画像添付、発注書PDF、レポート類、外部サービス設定)。
+| 領域 | 機能 | 状態 | 機能フラグ | 操作権限 | 実装箇所 |
+|---|---|---|---|---|---|
+| 基盤 | 予約カレンダー(Web予約) | ✅ | 常時ON | 公開 | `booking` |
+| 基盤 | 深夜営業(閉店30時まで・25時枠表記) | ✅ | 常時ON | — | `booking/timeslots.py` |
+| 基盤 | 店舗メンバー/店長権限・機能フラグ判定 | ✅ | — | — | `booking/access.py` |
+| A | 営業日・開店チェックリスト・開店連鎖(失敗は警告タスク化) | ✅ | 常時ON | 開閉店は店長 | `operations` |
+| D | シフト・打刻・月次CSV | ✅ | 常時ON | CSVは店長 | `attendance` |
+| E | 座席・座席ボード・ウォークイン(競合はDB制約) | ✅ | `enable_seat_board` | 全スタッフ | `booking` |
+| B | SNS下書き自動生成(出勤キャスト・入荷差し込み+画像) | ✅ | `enable_sns` | 全スタッフ | `sns/services.py` |
+| B | SNS承認→配信(Threads/X/Instagram、未設定は手動フォールバック、再配信) | ✅ | `enable_sns` | 店長 | `sns/adapters.py` |
+| F | 商品・入出庫・発注点・発注案生成 | ✅ | `enable_inventory` | 全スタッフ | `inventory` |
+| F | 発注承認→メール/テキスト、入荷済み反映 | ✅ | `enable_inventory` | 店長 | `inventory/services.py` |
+| C | GBP 臨時営業時間同期(未設定はリマインダー) | ✅ 条件付き | `enable_gbp` | — | `operations/gbp.py` |
+| C | GCP 実行基盤(Cloud Run/Cloud SQL/Sentry) | ✅ コード側 | — | — | `Dockerfile`, `project/` |
 
 ### 運用開始時に必要な設定(コード外)
 
 | 項目 | 内容 |
 |---|---|
-| SNS API | `THREADS_ACCESS_TOKEN`/`THREADS_USER_ID`、`IG_ACCESS_TOKEN`/`IG_USER_ID`(要 Meta アプリレビュー)、`X_*` 4種(要有料プラン判断+ requests-oauthlib 導入)。未設定でも手動コピペ運用で成立 |
+| SNS API | `THREADS_*`、`IG_*`(要 Meta アプリレビュー)、`X_*` 4種(要有料プラン判断)。未設定でも手動コピペ運用で成立 |
 | 画像公開URL | `PUBLIC_MEDIA_BASE_URL`(Cloud Storage 公開バケット。Instagram 投稿の前提) |
-| GBP | `GBP_ACCESS_TOKEN`/`GBP_LOCATION`(API 利用承認が取れた場合のみ) |
+| GBP | `GBP_ACCESS_TOKEN` / `GBP_LOCATION`(API 利用承認が取れた場合のみ) |
+| DB / 監視 | `DATABASE_URL`(Cloud SQL)、`SENTRY_DSN` |
 | メール | `DJANGO_EMAIL_*`(発注書メール送信用 SMTP) |
-| フォント | `SNS_IMAGE_FONT`(日本語フォントのパス。Noto CJK 等) |
+| フォント | Docker 同梱済み(Noto CJK)。別環境なら `SNS_IMAGE_FONT` |
 
-## 6. 分類サマリ
+手順は [external-setup-guide.md](external-setup-guide.md)、追跡は Issue #10。
 
-| 機能 | 実装済み | 実装済み・改修推奨 | 新規構築 | 判定 |
-|---|---|---|---|---|
-| 店舗・スタッフ・予約枠の基本 CRUD | ✅ | — | — | 継続利用 |
-| 予約カレンダー・マイページ | — | ✅(P-5〜P-7) | — | Phase 0 で改修 |
-| プロジェクト基盤(Django/Secrets) | — | ✅(P-1〜P-4, P-8) | — | Phase 0 で改修 |
-| A. 開店チェックリスト・営業日 | — | — | ✅ | 採用(Phase 1) |
-| B. SNS 自動投稿 | — | — | ✅ | 条件付き採用(Phase 2) |
-| C. GBP/マップ自動化 | — | — | ✅ | 条件付き採用(Phase 3)/基盤は採用(Phase 1) |
-| D. シフト・打刻(ライト勤怠) | — | ✅(Staff 拡張) | ✅ | 採用(Phase 1) |
-| E. 座席・予約管理 | — | ✅(予約フロー) | ✅(座席) | 採用(Phase 0〜2) |
-| F. 在庫・発注案 | — | — | ✅ | 条件付き採用(Phase 3) |
+## 6. 資料の構成
+
+| 資料 | 役割 |
+|---|---|
+| 本書 | 要件・見送り判断(§1〜4)と現在の実装状態(§5) |
+| [operations-model.md](operations-model.md) | 誰が・いつ・何をするか。権限マトリクス、日次フロー、障害時フォールバック |
+| [backlog.md](backlog.md) | 未着手タスクと実装前検証(GitHub Issues と対応) |
+| [CHANGELOG.md](CHANGELOG.md) | 実装履歴(PR 単位) |
+| [external-setup-guide.md](external-setup-guide.md) | アカウント所有者にしかできない外部設定の手順 |
+| [handoff.md](handoff.md) | 進行中作業の引き継ぎ(AI セッションの再開用) |

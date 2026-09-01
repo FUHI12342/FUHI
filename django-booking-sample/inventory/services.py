@@ -3,51 +3,41 @@ import logging
 
 from django.core.mail import send_mail
 from django.db import models
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
+from booking.timeslots import calendar_day_range
 from .models import Product, PurchaseOrder, PurchaseOrderItem, StockMovement
 
 logger = logging.getLogger(__name__)
 
 
+def _arrivals_on(store, date, **product_filters):
+    """指定の暦日に入荷した商品名(重複なし)。"""
+    day_start, day_end = calendar_day_range(date)
+    return list(
+        StockMovement.objects.filter(
+            product__store=store, kind=StockMovement.KIND_ARRIVAL,
+            at__gte=day_start, at__lt=day_end, **product_filters,
+        ).values_list('product__name', flat=True).distinct()
+    )
+
+
 def sns_arrivals(store, date):
     """SNS告知対象の商品のうち、指定日に入荷したものの品名リスト(SNS文面の差し込み用)。"""
-    tz = timezone.get_current_timezone()
-    day_start = datetime.datetime.combine(date, datetime.time.min, tzinfo=tz)
-    day_end = day_start + datetime.timedelta(days=1)
-    names = (
-        StockMovement.objects.filter(
-            product__store=store,
-            product__sns_announce=True,
-            product__is_active=True,
-            kind=StockMovement.KIND_ARRIVAL,
-            at__gte=day_start,
-            at__lt=day_end,
-        )
-        .values_list('product__name', flat=True)
-        .distinct()
-    )
-    return list(names)
+    return _arrivals_on(store, date, product__sns_announce=True, product__is_active=True)
 
 
 def arrived_product_names(store, date):
     """指定日に入荷した全商品名(品出しタスク用。SNS告知フラグは問わない)。"""
-    tz = timezone.get_current_timezone()
-    day_start = datetime.datetime.combine(date, datetime.time.min, tzinfo=tz)
-    day_end = day_start + datetime.timedelta(days=1)
-    return list(
-        StockMovement.objects.filter(
-            product__store=store, kind=StockMovement.KIND_ARRIVAL,
-            at__gte=day_start, at__lt=day_end,
-        ).values_list('product__name', flat=True).distinct()
-    )
+    return _arrivals_on(store, date)
 
 
 def products_below_reorder_point(store):
     """発注点を下回った(現在庫 <= 発注点)取扱中の商品。"""
     products = (
         Product.objects.filter(store=store, is_active=True)
-        .annotate(stock=models.functions.Coalesce(models.Sum('movements__quantity'), 0))
+        .annotate(stock=Coalesce(models.Sum('movements__quantity'), 0))
         .filter(stock__lte=models.F('reorder_point'))
     )
     return list(products)

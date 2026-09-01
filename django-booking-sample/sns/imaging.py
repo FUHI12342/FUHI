@@ -4,6 +4,7 @@
 1080x1080 の告知画像を合成する。キャストのプロフィール画像は
 sns_publishable=True のスタッフ分のみ貼り込む(顔出しNG対応)。
 """
+import glob
 import io
 import os
 
@@ -22,7 +23,6 @@ def _font_candidates():
     yield '/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf'
     yield '/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc'
     # Debian の fonts-noto-cjk はバージョンによりファイル名が異なる(VF版など)ため走査する
-    import glob
     for pattern in ('/usr/share/fonts/**/*CJK*.ttc', '/usr/share/fonts/**/*CJK*.otf'):
         yield from glob.glob(pattern, recursive=True)
 

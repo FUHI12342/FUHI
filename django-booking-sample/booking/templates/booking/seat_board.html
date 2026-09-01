@@ -1,0 +1,49 @@
+{% extends 'booking/base.html' %}
+
+{% block content %}
+    <h1>{{ store.name }} 座席ボード({{ date }})</h1>
+
+    <h2>使用中(ウォークイン)</h2>
+    <ul>
+        {% for walkin in active_walkins %}
+            <li>
+                {{ walkin.seat.name }} {{ walkin.party_size }}名({{ walkin.seated_at|time:'H:i' }}〜)
+                <form action="{% url 'booking:walkin_end' walkin.pk %}" method="post" style="display:inline">
+                    {% csrf_token %}
+                    <button type="submit">離席</button>
+                </form>
+            </li>
+        {% empty %}
+            <li>使用中の席はありません。</li>
+        {% endfor %}
+    </ul>
+
+    <h2>着席(ウォークイン)</h2>
+    {% for seat in seats %}
+        <form action="{% url 'booking:walkin_start' seat.pk %}" method="post" style="display:inline">
+            {% csrf_token %}
+            <input type="number" name="party_size" value="1" min="1" max="{{ seat.capacity }}" style="width:3em">
+            <button type="submit">{{ seat.name }}({{ seat.get_seat_type_display }}・定員{{ seat.capacity }})に着席</button>
+        </form><br>
+    {% empty %}
+        <p>座席が未登録です。管理画面から登録してください。</p>
+    {% endfor %}
+
+    <h2>予約状況</h2>
+    <table border="1" style="border-collapse:collapse">
+        <tr>
+            <th>時間</th>
+            {% for seat in seats %}<th>{{ seat.name }}</th>{% endfor %}
+        </tr>
+        {% for row in rows %}
+            <tr>
+                <th>{{ row.hour }}:00</th>
+                {% for cell in row.cells %}
+                    <td>
+                        {% if cell.schedule %}{{ cell.schedule.name }}({{ cell.schedule.party_size }}名){% else %}-{% endif %}
+                    </td>
+                {% endfor %}
+            </tr>
+        {% endfor %}
+    </table>
+{% endblock %}

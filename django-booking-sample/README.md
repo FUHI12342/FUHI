@@ -1,18 +1,44 @@
-# django-booking-sample
-Djangoを使った予約サイトのサンプル。[解説ブログ](https://narito.ninja/blog/detail/157/)
+# 予約・開店業務管理システム
+
+Django製の予約サイト([django-booking-sample](https://github.com/naritotakizawa/django-booking-sample) ベース)を、
+リアル店舗の開店業務自動化システムへ拡張したもの。
+要件定義・実装計画は [docs/store-opening-automation-requirements.md](../docs/store-opening-automation-requirements.md) を参照。
 
 ## 動かし方
+
 ```
-git clone https://github.com/naritotakizawa/django-booking-sample
-cd django-booking-sample
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py loaddata initial   # サンプルデータ(店舗・スタッフ・ユーザー)
 python manage.py runserver
 ```
 
 その後、ブラウザで http://127.0.0.1:8000 へアクセスしてください。
 
+### 環境変数(本番)
+
+| 変数 | 内容 |
+|---|---|
+| `DJANGO_SECRET_KEY` | 必須。シークレットキー |
+| `DJANGO_DEBUG` | `false` を設定(デフォルトは開発用の `true`) |
+| `DJANGO_ALLOWED_HOSTS` | カンマ区切りのホスト名 |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | カンマ区切りのオリジン(リバースプロキシ配下用) |
+
+## 主な画面
+
+| URL | 内容 |
+|---|---|
+| `/` | 店舗一覧・予約カレンダー(既存) |
+| `/ops/store/<id>/today/` | 開店ダッシュボード(チェックリスト・開閉店・当日シフト) |
+| `/attendance/` | 自分の勤怠(出退勤打刻) |
+| `/store/<id>/seats/` | 座席ボード(予約・ウォークイン) |
+| `/sns/store/<id>/drafts/` | SNS投稿の下書き確認・承認 |
+| `/inventory/store/<id>/` | 在庫一覧・入荷登録・発注案 |
+| `/admin/` | マスタ管理(座席・シフト・チェックリスト雛形・商品・テンプレート等) |
 
 ## テストする
+
 ```
-coverage run --source='.' manage.py test booking
+coverage run --source='.' manage.py test
 coverage report -m
 ```

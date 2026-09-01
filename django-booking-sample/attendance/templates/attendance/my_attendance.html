@@ -1,0 +1,30 @@
+{% extends 'booking/base.html' %}
+
+{% block content %}
+    <h1>勤怠({{ today }})</h1>
+    {% for row in rows %}
+        <h2>{{ row.staff }}</h2>
+        <p>
+            シフト:
+            {% if row.shift %}
+                {{ row.shift.start_time|time:'H:i' }} - {{ row.shift.end_time|time:'H:i' }}({{ row.shift.get_status_display }})
+            {% else %}
+                本日の予定はありません
+            {% endif %}
+        </p>
+        <p>
+            出勤: {% if row.record.clock_in %}{{ row.record.clock_in|time:'H:i' }}{% else %}未打刻{% endif %}
+            / 退勤: {% if row.record.clock_out %}{{ row.record.clock_out|time:'H:i' }}{% else %}未打刻{% endif %}
+        </p>
+        <form action="{% url 'attendance:clock_in' row.staff.pk %}" method="post" style="display:inline">
+            {% csrf_token %}
+            <button type="submit">出勤打刻</button>
+        </form>
+        <form action="{% url 'attendance:clock_out' row.staff.pk %}" method="post" style="display:inline">
+            {% csrf_token %}
+            <button type="submit">退勤打刻</button>
+        </form>
+    {% empty %}
+        <p>スタッフ登録がありません。</p>
+    {% endfor %}
+{% endblock %}

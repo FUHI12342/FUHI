@@ -1,0 +1,7 @@
+Django>=5.2,<5.3
+# 10.1 未満は ImageFont.load_default(size) 非対応(フォント無し環境のフォールバックが壊れる)
+Pillow>=10.1
+jpholiday>=1.0
+coverage>=7.0
+# X (Twitter) API v2 投稿用。キー未設定なら未使用(手動フォールバック)
+requests-oauthlib>=1.3

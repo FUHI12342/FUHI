@@ -16,7 +16,7 @@ class StoreListViewTests(TestCase):
     def test_get(self):
         """店舗の一覧が表示されるかテスト"""
         response = self.client.get(resolve_url('booking:store_list'))
-        self.assertQuerysetEqual(response.context['store_list'],  ['<Store: 店舗A>', '<Store: 店舗B>', '<Store: 店舗C>'])
+        self.assertQuerySetEqual(response.context['store_list'], ['店舗A', '店舗B', '店舗C'], transform=str)
 
 
 class StaffListViewTests(TestCase):
@@ -25,17 +25,17 @@ class StaffListViewTests(TestCase):
     def test_store_a(self):
         """店舗Aのスタッフリストの確認"""
         response = self.client.get(resolve_url('booking:staff_list', pk=1))
-        self.assertQuerysetEqual(response.context['staff_list'],  ['<Staff: 店舗A - じゃば>', '<Staff: 店舗A - ぱいそん>'])
+        self.assertQuerySetEqual(response.context['staff_list'], ['店舗A - じゃば', '店舗A - ぱいそん'], transform=str)
 
     def test_store_b(self):
         """店舗Bのスタッフリストの確認"""
         response = self.client.get(resolve_url('booking:staff_list', pk=2))
-        self.assertQuerysetEqual(response.context['staff_list'],  ['<Staff: 店舗B - じゃんご>'])
+        self.assertQuerySetEqual(response.context['staff_list'], ['店舗B - じゃんご'], transform=str)
 
     def test_store_c(self):
         """店舗Cのスタッフリストの確認。店舗Cには誰もいない"""
         response = self.client.get(resolve_url('booking:staff_list', pk=3))
-        self.assertQuerysetEqual(response.context['staff_list'],  [])
+        self.assertQuerySetEqual(response.context['staff_list'], [])
 
 
 class StaffCalendarViewTests(TestCase):
@@ -214,17 +214,17 @@ class MyPageViewTests(TestCase):
         """管理者でログインした場合。店舗スタッフではないので、ナニも表示されない"""
         self.client.login(username='admin', password='admin123')
         response = self.client.get(resolve_url('booking:my_page'))
-        self.assertQuerysetEqual(response.context['staff_list'], [])
-        self.assertQuerysetEqual(response.context['schedule_list'], [])
-        self.assertContains(response, 'adminのMyPage')
+        self.assertQuerySetEqual(response.context['staff_list'], [])
+        self.assertQuerySetEqual(response.context['schedule_list'], [])
+        self.assertContains(response, 'adminのマイページ')
 
     def test_login_tanaka(self):
         """田中でログイン。スタッフデータが表示されることを確認"""
         self.client.login(username='tanakataro', password='helloworld123')
         response = self.client.get(resolve_url('booking:my_page'))
-        self.assertQuerysetEqual(response.context['staff_list'], ['<Staff: 店舗B - じゃんご>', '<Staff: 店舗A - ぱいそん>'])
-        self.assertQuerysetEqual(response.context['schedule_list'], [])
-        self.assertContains(response, 'tanakataroのMyPage')
+        self.assertQuerySetEqual(response.context['staff_list'], ['店舗B - じゃんご', '店舗A - ぱいそん'], transform=str)
+        self.assertQuerySetEqual(response.context['schedule_list'], [])
+        self.assertContains(response, 'tanakataroのマイページ')
 
     def test_login_tanaka_with_schedule(self):
         """田中でログインし、予約がある場合、自分担当の予約だけ表示されるか確認。"""
@@ -253,7 +253,7 @@ class MyPageViewTests(TestCase):
         self.client.login(username='yosidaziro', password='helloworld123')
         response = self.client.get(resolve_url('booking:my_page'))
         self.assertEqual(list(response.context['schedule_list']), [s4])
-        self.assertContains(response, 'yosidaziroのMyPage')
+        self.assertContains(response, 'yosidaziroのマイページ')
 
 
 class MyPageWithPkViewTests(TestCase):
@@ -269,14 +269,14 @@ class MyPageWithPkViewTests(TestCase):
         self.client.login(username='admin', password='admin123')
         response = self.client.get(resolve_url('booking:my_page_with_pk', pk=2))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'tanakataroのMyPage')
+        self.assertContains(response, 'tanakataroのマイページ')
 
     def test_login_tanaka(self):
         """自分自身のマイページは見れる"""
         self.client.login(username='tanakataro', password='helloworld123')
         response = self.client.get(resolve_url('booking:my_page_with_pk', pk=2))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'tanakataroのMyPage')
+        self.assertContains(response, 'tanakataroのマイページ')
 
     def test_login_yosida(self):
         """他人のマイページは見れない"""
@@ -499,3 +499,96 @@ class MyPageHolidayAddViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 405)
 
+
+
+class SeatBoardViewTests(TestCase):
+    fixtures = ['initial']
+
+    def setUp(self):
+        from .models import Seat, Store
+        self.store = Store.objects.get(pk=1)
+        self.seat = Seat.objects.create(store=self.store, name='T1', capacity=4)
+
+    def test_requires_store_membership(self):
+        self.client.login(username='yosidaziro', password='helloworld123')
+        response = self.client.get(resolve_url('booking:seat_board', pk=2))
+        self.assertEqual(response.status_code, 403)
+
+    def test_board_shows_seat_and_reservation(self):
+        staff = get_object_or_404(Staff, pk=1)
+        now = timezone.localtime().replace(hour=10, minute=0, second=0, microsecond=0)
+        Schedule.objects.create(
+            staff=staff, start=now, end=now + datetime.timedelta(hours=1),
+            name='佐藤', seat=self.seat, party_size=3,
+        )
+        self.client.login(username='tanakataro', password='helloworld123')
+        response = self.client.get(resolve_url('booking:seat_board', pk=1))
+        self.assertContains(response, 'T1')
+        self.assertContains(response, '佐藤(3名)')
+
+    def test_walkin_start_and_end(self):
+        from .models import WalkIn
+        self.client.login(username='tanakataro', password='helloworld123')
+        response = self.client.post(
+            resolve_url('booking:walkin_start', seat_pk=self.seat.pk),
+            {'party_size': '2'}, follow=True,
+        )
+        walkin = WalkIn.objects.get(seat=self.seat)
+        self.assertTrue(walkin.is_active)
+        self.assertEqual(walkin.party_size, 2)
+
+        # 使用中の席には重ねて着席できない
+        response = self.client.post(
+            resolve_url('booking:walkin_start', seat_pk=self.seat.pk),
+            {'party_size': '1'}, follow=True,
+        )
+        messages = [str(m) for m in response.context['messages']]
+        self.assertIn('T1 は使用中です。', messages)
+
+        self.client.post(resolve_url('booking:walkin_end', pk=walkin.pk))
+        walkin.refresh_from_db()
+        self.assertFalse(walkin.is_active)
+
+    def test_seat_double_booking_rejected(self):
+        from django.db import IntegrityError
+        staff1 = get_object_or_404(Staff, pk=1)
+        staff3 = get_object_or_404(Staff, pk=3)
+        now = timezone.localtime().replace(hour=10, minute=0, second=0, microsecond=0)
+        Schedule.objects.create(
+            staff=staff1, start=now, end=now + datetime.timedelta(hours=1), name='A', seat=self.seat,
+        )
+        with self.assertRaises(IntegrityError):
+            Schedule.objects.create(
+                staff=staff3, start=now, end=now + datetime.timedelta(hours=1), name='B', seat=self.seat,
+            )
+
+
+class ModelConstraintTests(TestCase):
+    fixtures = ['initial']
+
+    def test_store_rejects_overnight_hours(self):
+        from django.db import IntegrityError
+        from .models import Store
+        with self.assertRaises(IntegrityError):
+            Store.objects.create(name='深夜バー', opening_hour=18, closing_hour=2)
+
+    def test_store_rejects_hours_beyond_24(self):
+        from django.db import IntegrityError
+        from .models import Store
+        with self.assertRaises(IntegrityError):
+            Store.objects.create(name='26時閉店', opening_hour=18, closing_hour=26)
+
+    def test_single_active_walkin_per_seat(self):
+        from django.db import IntegrityError, transaction
+        from .models import Seat, Store, WalkIn
+        store = Store.objects.get(pk=1)
+        seat = Seat.objects.create(store=store, name='T9')
+        WalkIn.objects.create(seat=seat, party_size=2)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                WalkIn.objects.create(seat=seat, party_size=1)
+        # 離席後は再度着席できる
+        active = WalkIn.objects.get(seat=seat)
+        active.left_at = timezone.now()
+        active.save()
+        WalkIn.objects.create(seat=seat, party_size=3)

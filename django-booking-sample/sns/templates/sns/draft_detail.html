@@ -1,0 +1,39 @@
+{% extends 'booking/base.html' %}
+
+{% block content %}
+    <h1>{{ object.store.name }} {{ object.date }} の投稿({{ object.get_status_display }})</h1>
+
+    {% if object.image %}
+        <p><img src="{{ object.image.url }}" alt="投稿画像" style="max-width:400px"></p>
+    {% endif %}
+
+    <h2>本文(コピー用)</h2>
+    <textarea rows="10" cols="60" readonly>{{ object.body }}</textarea>
+
+    {% if object.status == 'draft' %}
+        <form action="{% url 'sns:approve' object.pk %}" method="post">
+            {% csrf_token %}
+            <button type="submit">承認して投稿する</button>
+        </form>
+        <p><small>API設定済みのプラットフォームには自動投稿されます。未設定のものは「手動投稿」と表示されるので、上の本文と画像をコピーして投稿してください。</small></p>
+    {% else %}
+        <p>承認: {{ object.approved_by }}({{ object.approved_at }})</p>
+        <form action="{% url 'sns:approve' object.pk %}" method="post">
+            {% csrf_token %}
+            <button type="submit">失敗したプラットフォームへ再配信する</button>
+        </form>
+    {% endif %}
+
+    <h2>投稿結果</h2>
+    <ul>
+        {% for result in object.results.all %}
+            <li>
+                <strong>{{ result.platform }}</strong>: {{ result.get_status_display }}
+                {% if result.external_url %}<a href="{{ result.external_url }}">{{ result.external_url }}</a>{% endif %}
+                {% if result.detail %}<small>{{ result.detail }}</small>{% endif %}
+            </li>
+        {% empty %}
+            <li>まだ投稿されていません。</li>
+        {% endfor %}
+    </ul>
+{% endblock %}

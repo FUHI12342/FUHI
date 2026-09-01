@@ -133,6 +133,7 @@
 - E-3: 当日の座席ボード。時間帯×座席のグリッドで予約・ウォークイン(飛び込み)・空席を一覧。ウォークインは着席/離席のワンタップ記録。
 - E-4: 既存予約フローの改修(§1.1 P-5〜P-7:タイムゾーンバグ、営業時間ハードコード、二重予約競合)。
 - E-5: 占い店舗(スタッフ指名・時間枠)と飲食店舗(座席・人数)の両モードを `Store` の業態フラグで切替。
+- E-6(後日昇格): 顧客向けWeb座席予約。人数→空き座席候補→確定。確認メール・開始前キャンセル導線(ノーショー対策)。予約導線「Web予約のみ」の確定(Issue #4)に伴い必須化。
 
 **分類**:E-4 は実装済みだが改修推奨、E-1〜E-3・E-5 は新規構築
 
@@ -217,6 +218,7 @@
 | A | 営業日・開店チェックリスト・開店連鎖(失敗は警告タスク化) | ✅ | 常時ON | 開閉店は店長 | `operations` |
 | D | シフト・打刻・月次CSV | ✅ | 常時ON | CSVは店長 | `attendance` |
 | E | 座席・座席ボード・ウォークイン(競合はDB制約) | ✅ | `enable_seat_board` | 全スタッフ | `booking` |
+| E | 顧客向けWeb座席予約(人数→空席候補→確定、確認メール、開始前キャンセル、深夜枠) | ✅ | `enable_web_reservation`(飲食業態のみ) | 公開(ログイン不要) | `booking/reservations.py` |
 | B | SNS下書き自動生成(出勤キャスト・入荷差し込み+画像) | ✅ | `enable_sns` | 全スタッフ | `sns/services.py` |
 | B | SNS承認→配信(Threads/X/Instagram、未設定は手動フォールバック、再配信) | ✅ | `enable_sns` | 店長 | `sns/adapters.py` |
 | F | 商品・入出庫・発注点・発注案生成 | ✅ | `enable_inventory` | 全スタッフ | `inventory` |
@@ -234,6 +236,7 @@
 | DB / 監視 | `DATABASE_URL`(Cloud SQL)、`SENTRY_DSN` |
 | メール | `DJANGO_EMAIL_*`(発注書メール送信用 SMTP) |
 | フォント | Docker 同梱済み(Noto CJK)。別環境なら `SNS_IMAGE_FONT` |
+| 予約確認メール | 発注メールと同じ `DJANGO_EMAIL_*`。未設定時はコンソール出力(予約自体は成立し、画面に確認URLが出る) |
 
 手順は [external-setup-guide.md](external-setup-guide.md)、追跡は Issue #10。
 

@@ -6,9 +6,9 @@ from .models import Seat, Schedule, Staff, Store, WalkIn
 class StoreAdmin(admin.ModelAdmin):
     list_display = (
         'name', 'business_type', 'opening_hour', 'closing_hour',
-        'enable_sns', 'enable_inventory', 'enable_seat_board', 'enable_gbp',
+        'enable_sns', 'enable_inventory', 'enable_seat_board', 'enable_gbp', 'enable_web_reservation',
     )
-    list_editable = ('enable_sns', 'enable_inventory', 'enable_seat_board', 'enable_gbp')
+    list_editable = ('enable_sns', 'enable_inventory', 'enable_seat_board', 'enable_gbp', 'enable_web_reservation')
 
 
 @admin.register(Staff)
@@ -25,8 +25,9 @@ class SeatAdmin(admin.ModelAdmin):
 
 @admin.register(Schedule)
 class ScheduleAdmin(admin.ModelAdmin):
-    list_display = ('name', 'staff', 'start', 'end', 'seat', 'party_size')
-    list_filter = ('staff__store',)
+    list_display = ('name', 'staff', 'start', 'end', 'seat', 'party_size', 'customer_email', 'customer_phone')
+    list_filter = ('staff__store', 'seat__store')
+    search_fields = ('name', 'customer_email', 'customer_phone')
 
 
 @admin.register(WalkIn)

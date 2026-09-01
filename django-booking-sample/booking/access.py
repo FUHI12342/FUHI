@@ -19,6 +19,7 @@ FEATURE_LABELS = {
     'enable_inventory': '在庫・発注機能',
     'enable_seat_board': '座席ボード',
     'enable_gbp': 'Googleマップ(GBP)連携',
+    'enable_web_reservation': 'Web座席予約',
 }
 
 
@@ -36,14 +37,28 @@ def feature_enabled(store, feature):
     return feature is None or getattr(store, feature)
 
 
+def require_feature(store, feature):
+    """機能フラグがオフなら Http404(存在しない扱い)。公開ページからも使う。"""
+    if not feature_enabled(store, feature):
+        raise Http404(f'この店舗では{FEATURE_LABELS.get(feature, feature)}が無効です。')
+
+
+def require_web_reservation(store):
+    """顧客向けWeb座席予約が使える店舗か。飲食業態以外・フラグオフは 404。
+
+    ログイン不要の公開機能なので権限判定は無い。判定条件は Store.accepts_web_reservation。
+    """
+    if not store.accepts_web_reservation:
+        raise Http404('この店舗ではWeb座席予約を受け付けていません。')
+
+
 def check_store_access(user, store, *, feature=None, manager=False):
     """機能フラグ→権限の順に検査し、通らなければ例外を投げる。
 
     feature: 'enable_sns' 等の Store フラグ名。オフなら Http404。
     manager: True なら店長権限を要求。満たさなければ PermissionDenied。
     """
-    if not feature_enabled(store, feature):
-        raise Http404(f'この店舗では{FEATURE_LABELS.get(feature, feature)}が無効です。')
+    require_feature(store, feature)
     if not user.is_authenticated or not user_belongs_to_store(user, store, require_manager=manager):
         raise PermissionDenied
 

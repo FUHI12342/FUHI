@@ -77,7 +77,7 @@ gsutil iam ch allUsers:objectViewer gs://<BUCKET>
 3. 承認されたら OAuth でトークンを取得し設定: `GBP_ACCESS_TOKEN`、`GBP_LOCATION`(`locations/<ID>` 形式)
 - 否認された場合はそのままでよい(臨時営業時間のある日に手動更新リマインダーが出る設計)
 
-## 6. 発注メール(SMTP)
+## 6. メール送信(SMTP: 発注メール・予約確認メール)
 
 任意の SMTP(Gmail のアプリパスワード、SendGrid 等)で以下を設定:
 
@@ -90,12 +90,14 @@ DJANGO_DEFAULT_FROM_EMAIL=order@example.com
 ```
 
 未設定でも発注書テキストが画面に出るので、電話/FAX/LINE 運用は可能。
+Web座席予約の確認メール(キャンセル用URL入り)も同じ設定で送られる。未設定時は予約自体は成立し、
+確認画面に URL が出るだけになるため、**飲食業態で Web 予約を使うなら SMTP 設定を推奨**。
 
 ## 優先順位の推奨
 
 1. GCP デプロイ(まず店内業務=Phase 1 の価値が出る)
 2. Threads(審査が軽く、SNS自動投稿の効果検証ができる)
-3. SMTP(発注メール)
+3. SMTP(発注メール・予約確認メール。飲食業態でWeb予約を使うなら先に)
 4. Instagram(レビュー待ちの間は手動コピペ運用)
 5. X(有料化の判断を効果検証後に)
 6. GBP(承認が取れたら)

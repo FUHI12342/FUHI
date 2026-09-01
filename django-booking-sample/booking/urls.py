@@ -18,6 +18,14 @@ urlpatterns = [
     path('seat/<int:seat_pk>/walkin/', views.walkin_start, name='walkin_start'),
     path('walkin/<int:pk>/end/', views.walkin_end, name='walkin_end'),
 
+    path('store/<int:pk>/reserve/', views.WebReservation.as_view(), name='web_reservation'),
+    path(
+        'store/<int:pk>/reserve/<int:year>/<int:month>/<int:day>/<int:hour>/seat/<int:seat_pk>/',
+        views.WebReservationConfirm.as_view(), name='web_reservation_confirm',
+    ),
+    path('reservation/<str:token>/', views.WebReservationDetail.as_view(), name='web_reservation_detail'),
+    path('reservation/<str:token>/cancel/', views.web_reservation_cancel, name='web_reservation_cancel'),
+
     path('mypage/', views.MyPage.as_view(), name='my_page'),
     path('mypage/<int:pk>/', views.MyPageWithPk.as_view(), name='my_page_with_pk'),
     path('mypage/<int:pk>/calendar/', views.MyPageCalendar.as_view(), name='my_page_calendar'),

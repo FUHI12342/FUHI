@@ -8,12 +8,15 @@ from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.http import urlencode
 from django.views import generic
 from django.views.decorators.http import require_POST
 
-from .access import StoreAccessMixin, check_store_access
+from . import reservations
+from .access import StoreAccessMixin, check_store_access, require_web_reservation
+from .forms import ReservationForm, ReservationSearchForm
 from .models import Seat, Schedule, Staff, Store, WalkIn
 from .timeslots import business_day_span, make_aware_datetime
 
@@ -37,7 +40,10 @@ class OnlyScheduleMixin(UserPassesTestMixin):
 
     def test_func(self):
         schedule = get_object_or_404(Schedule, pk=self.kwargs['pk'])
-        return schedule.staff.user == self.request.user or self.request.user.is_superuser
+        if self.request.user.is_superuser:
+            return True
+        # 座席予約(staff 無し)はマイページの対象外
+        return schedule.staff is not None and schedule.staff.user == self.request.user
 
 
 class OnlyUserMixin(UserPassesTestMixin):
@@ -285,3 +291,117 @@ def walkin_end(request, pk):
         walkin.save(update_fields=['left_at'])
         messages.success(request, f'{walkin.seat.name} 離席。')
     return redirect('booking:seat_board', pk=walkin.seat.store.pk)
+
+
+# ---------------------------------------------------------------------------
+# 顧客向けWeb座席予約(飲食業態・ログイン不要。機能フラグ: enable_web_reservation)
+# ---------------------------------------------------------------------------
+
+class WebReservationMixin:
+    """URL の store pk から店舗を引き、Web座席予約を受け付ける店舗でなければ 404。"""
+
+    def dispatch(self, request, *args, **kwargs):
+        self.store = get_object_or_404(Store, pk=kwargs['pk'])
+        require_web_reservation(self.store)
+        return super().dispatch(request, *args, **kwargs)
+
+
+class WebReservation(WebReservationMixin, generic.TemplateView):
+    """人数・日付を入れると、時間帯ごとの空き座席候補を出す。"""
+    template_name = 'booking/web_reservation.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.request.GET:
+            form = ReservationSearchForm(self.request.GET)
+        else:
+            form = ReservationSearchForm(initial={'date': timezone.localdate()})
+        context.update(store=self.store, form=form, slots=None)
+        if self.request.GET and form.is_valid():
+            date, party_size = form.cleaned_data['date'], form.cleaned_data['party_size']
+            context.update(
+                date=date, party_size=party_size,
+                slots=reservations.available_slots(self.store, date, party_size),
+            )
+        return context
+
+
+class WebReservationConfirm(WebReservationMixin, generic.FormView):
+    """選んだ枠・座席で連絡先を入力して確定する。"""
+    template_name = 'booking/web_reservation_confirm.html'
+    form_class = ReservationForm
+
+    def setup(self, request, *args, **kwargs):
+        super().setup(request, *args, **kwargs)
+        self.date = datetime.date(kwargs['year'], kwargs['month'], kwargs['day'])
+        self.hour = kwargs['hour']
+        try:
+            self.party_size = max(1, int(request.GET.get('party_size', request.POST.get('party_size', '1'))))
+        except ValueError:
+            self.party_size = 1
+
+    def dispatch(self, request, *args, **kwargs):
+        self.seat = get_object_or_404(Seat.objects.select_related('store'), pk=kwargs['seat_pk'], store_id=kwargs['pk'])
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            store=self.store, seat=self.seat, date=self.date, hour=self.hour,
+            slot_label=reservations.slot_label(self.hour), party_size=self.party_size,
+        )
+        return context
+
+    def form_valid(self, form):
+        data = form.cleaned_data
+        try:
+            schedule = reservations.create_reservation(
+                store=self.store, seat=self.seat, date=self.date, hour=self.hour,
+                party_size=self.party_size, name=data['name'],
+                email=data['customer_email'], phone=data['customer_phone'],
+            )
+        except reservations.SlotUnavailable as exc:
+            messages.error(self.request, str(exc))
+            return redirect(self._search_url())
+        detail_url = self.request.build_absolute_uri(
+            reverse('booking:web_reservation_detail', kwargs={'token': schedule.cancel_token})
+        )
+        if reservations.send_confirmation_email(schedule, detail_url):
+            messages.success(self.request, f'{schedule.customer_email} に確認メールを送りました。')
+        else:
+            messages.warning(self.request, '確認メールを送れませんでした。この画面のURLを控えてください。')
+        return redirect('booking:web_reservation_detail', token=schedule.cancel_token)
+
+    def _search_url(self):
+        query = urlencode({'date': self.date.isoformat(), 'party_size': self.party_size})
+        return f"{reverse('booking:web_reservation', kwargs={'pk': self.store.pk})}?{query}"
+
+
+def _web_reservations():
+    """トークンで参照できる座席予約。座席が削除された予約(seat=NULL)は存在しない扱い。"""
+    return Schedule.objects.filter(seat__isnull=False).select_related('seat__store')
+
+
+class WebReservationDetail(generic.DetailView):
+    """予約確認・キャンセル画面。ログイン不要で、URL のトークンだけが認証。"""
+    template_name = 'booking/web_reservation_detail.html'
+    context_object_name = 'schedule'
+
+    def get_object(self, queryset=None):
+        return get_object_or_404(_web_reservations(), cancel_token=self.kwargs['token'])
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['store'] = self.object.seat.store
+        return context
+
+
+@require_POST
+def web_reservation_cancel(request, token):
+    schedule = get_object_or_404(_web_reservations(), cancel_token=token)
+    store = schedule.seat.store
+    if reservations.cancel_reservation(schedule):
+        messages.success(request, 'ご予約をキャンセルしました。またのご利用をお待ちしています。')
+        return redirect('booking:web_reservation', pk=store.pk)
+    messages.error(request, '開始時刻を過ぎた予約はこの画面から取り消せません。店舗へ直接ご連絡ください。')
+    return redirect('booking:web_reservation_detail', token=token)

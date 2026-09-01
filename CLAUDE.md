@@ -22,7 +22,7 @@ python manage.py test                                    # 全テスト(CI と�
 ## アプリ構成と責務
 | アプリ | 責務 | 主要モジュール |
 |---|---|---|
-| booking | 店舗・スタッフ・座席・予約、**共通基盤** | `access.py`(権限/機能フラグ判定の唯一の場所)、`timeslots.py`(営業日枠⇔実時刻) |
+| booking | 店舗・スタッフ・座席・予約、**共通基盤** | `access.py`(権限/機能フラグ判定の唯一の場所)、`timeslots.py`(営業日枠⇔実時刻)、`reservations.py`(顧客向けWeb座席予約) |
 | operations | 営業日・開店チェックリスト・開店連鎖シグナル・GBP | `services.open_store`、`signals.store_opened`、`receivers.py` |
 | attendance | シフト・打刻・月次CSV | `Shift.objects.publishable_casts`(SNS掲載可の出勤者) |
 | sns | 下書き生成→店長承認→配信、アダプタ | `services.py`、`adapters.py`、`imaging.py` |
@@ -35,6 +35,7 @@ python manage.py test                                    # 全テスト(CI と�
 - **時刻は営業日基準**: 24以上は翌日早朝(25=翌1時)。変換は `booking/timeslots.py` 経由
 - **開店連鎖の失敗は握りつぶさない**: レシーバの例外は `open_store` が警告タスク化する
 - **SNS掲載は `publishable_casts`(在籍中×掲載可)のみ**。退職者は削除せず `is_on_roster=False`
+- **予約は `Schedule` 1テーブル**: 占いは `staff` 必須、飲食の座席予約は `staff=None, seat` 必須(DB制約 `schedule_has_staff_or_seat`)。座席の二重予約は `unique_schedule_per_seat_start` に委ねる
 
 ## ブランチ・マージ運用
 - 作業ブランチ: `claude/store-opening-automation-bok4kj`(マージ後は main から作り直す)

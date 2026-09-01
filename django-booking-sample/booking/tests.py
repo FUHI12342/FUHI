@@ -572,11 +572,23 @@ class ModelConstraintTests(TestCase):
         with self.assertRaises(IntegrityError):
             Store.objects.create(name='深夜バー', opening_hour=18, closing_hour=2)
 
-    def test_store_rejects_hours_beyond_24(self):
+    def test_store_allows_late_night_closing(self):
+        from .models import Store
+        store = Store.objects.create(name='26時閉店', opening_hour=18, closing_hour=26)
+        self.assertEqual(list(store.business_hours), list(range(18, 26)))
+
+    def test_store_rejects_hours_beyond_30(self):
         from django.db import IntegrityError
         from .models import Store
         with self.assertRaises(IntegrityError):
-            Store.objects.create(name='26時閉店', opening_hour=18, closing_hour=26)
+            Store.objects.create(name='31時閉店', opening_hour=18, closing_hour=31)
+
+    def test_store_rejects_span_over_24_hours(self):
+        # 営業24時間超は翌日早朝の枠がどの営業日か曖昧になるため禁止
+        from django.db import IntegrityError
+        from .models import Store
+        with self.assertRaises(IntegrityError):
+            Store.objects.create(name='ほぼ無休', opening_hour=1, closing_hour=26)
 
     def test_single_active_walkin_per_seat(self):
         from django.db import IntegrityError, transaction
@@ -653,3 +665,99 @@ class DatabaseUrlParserTests(TestCase):
         from project.database import database_config_from_url
         with self.assertRaises(ImproperlyConfigured):
             database_config_from_url('mysql://a:b@h/db')
+
+
+class LateNightBusinessTests(TestCase):
+    """深夜営業(閉店が翌日にまたがる店)のカレンダー・予約・座席ボード。"""
+    fixtures = ['initial']
+
+    def setUp(self):
+        from .models import Store
+        # 店舗Aを 18時-翌2時 営業に変更
+        self.store = Store.objects.get(pk=1)
+        self.store.opening_hour = 18
+        self.store.closing_hour = 26
+        self.store.save()
+
+    def test_make_aware_datetime_rolls_over_midnight(self):
+        from .views import make_aware_datetime
+        dt = make_aware_datetime(2026, 9, 1, 25)
+        local = timezone.localtime(dt)
+        self.assertEqual((local.month, local.day, local.hour), (9, 2, 1))
+
+    def test_business_slot_maps_early_morning_to_previous_day(self):
+        from .views import make_aware_datetime
+        local = timezone.localtime(make_aware_datetime(2026, 9, 1, 25))
+        slot_date, slot_hour = self.store.business_slot(local)
+        self.assertEqual((slot_date, slot_hour), (datetime.date(2026, 9, 1), 25))
+        # 営業日当日の通常時刻はそのまま
+        local = timezone.localtime(make_aware_datetime(2026, 9, 1, 19))
+        self.assertEqual(self.store.business_slot(local), (datetime.date(2026, 9, 1), 19))
+
+    def test_calendar_shows_late_night_rows_and_bookings(self):
+        from .views import make_aware_datetime
+        staff = get_object_or_404(Staff, pk=1)
+        base = timezone.localdate() + datetime.timedelta(days=1)
+        # 翌1時(=25時枠)の予約を入れる
+        start = make_aware_datetime(base.year, base.month, base.day, 25)
+        Schedule.objects.create(staff=staff, start=start, end=start + datetime.timedelta(hours=1), name='深夜客')
+        response = self.client.get(
+            resolve_url('booking:calendar', pk=1, year=base.year, month=base.month, day=base.day)
+        )
+        self.assertContains(response, '25:00')  # 深夜枠の行が表示される
+        self.assertContains(response, batu)     # 25時枠が×になっている
+
+    def test_booking_at_hour_25_creates_next_day_schedule(self):
+        base = timezone.localdate() + datetime.timedelta(days=1)
+        response = self.client.post(
+            resolve_url('booking:booking', pk=1, year=base.year, month=base.month, day=base.day, hour=25),
+            {'name': '深夜予約'}, follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        schedule = Schedule.objects.get(name='深夜予約')
+        local = timezone.localtime(schedule.start)
+        self.assertEqual(local.date(), base + datetime.timedelta(days=1))
+        self.assertEqual(local.hour, 1)
+
+    def test_seat_board_shows_late_night_reservation(self):
+        from .models import Seat
+        from .views import make_aware_datetime
+        seat = Seat.objects.create(store=self.store, name='VIP1', capacity=4)
+        staff = get_object_or_404(Staff, pk=1)
+        today = timezone.localdate()
+        start = make_aware_datetime(today.year, today.month, today.day, 25)
+        Schedule.objects.create(
+            staff=staff, start=start, end=start + datetime.timedelta(hours=1),
+            name='深夜卓', seat=seat, party_size=2,
+        )
+        self.client.login(username='tanakataro', password='helloworld123')
+        response = self.client.get(resolve_url('booking:seat_board', pk=1))
+        self.assertContains(response, '25:00')
+        self.assertContains(response, '深夜卓(2名)')
+
+
+class GbpPayloadTests(TestCase):
+    fixtures = ['initial']
+
+    def test_overnight_special_hours_payload(self):
+        from booking.models import Store
+        from operations.gbp import special_hours_payload
+        from operations.models import BusinessDay
+        store = Store.objects.get(pk=1)
+        business_day = BusinessDay(store=store, date=datetime.date(2026, 12, 31),
+                                   opening_hour_override=18, closing_hour_override=26)
+        period = special_hours_payload(business_day)['specialHours']['specialHourPeriods'][0]
+        self.assertEqual(period['startDate']['day'], 31)
+        self.assertEqual(period['openTime'], {'hours': 18})
+        self.assertEqual(period['endDate'], {'year': 2027, 'month': 1, 'day': 1})
+        self.assertEqual(period['closeTime'], {'hours': 2})
+
+    def test_same_day_payload_has_no_end_date(self):
+        from booking.models import Store
+        from operations.gbp import special_hours_payload
+        from operations.models import BusinessDay
+        store = Store.objects.get(pk=1)
+        business_day = BusinessDay(store=store, date=datetime.date(2026, 9, 1), closing_hour_override=15)
+        period = special_hours_payload(business_day)['specialHours']['specialHourPeriods'][0]
+        self.assertNotIn('endDate', period)
+        self.assertEqual(period['closeTime'], {'hours': 15})

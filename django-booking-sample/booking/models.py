@@ -14,16 +14,24 @@ class Store(models.Model):
 
     name = models.CharField('店名', max_length=255)
     business_type = models.CharField('業態', max_length=20, choices=BUSINESS_TYPE_CHOICES, default=TYPE_FORTUNE)
-    # 深夜営業(閉店が翌日にまたがる 18時-26時 等)は未対応。閉店は当日24時まで。
-    # 対応する場合の設計は docs/backlog.md 参照。
+    # 深夜営業対応: 閉店が翌日にまたがる場合は 24+h で表す(例: 18時-翌2時 → 18, 26)。
+    # 25時・26時といったナイト業態の慣習表記がそのまま画面に出る。上限は30(翌6時)。
     opening_hour = models.PositiveSmallIntegerField('開店時刻(時)', default=9)
     closing_hour = models.PositiveSmallIntegerField('閉店時刻(時)', default=18)
 
     class Meta:
         constraints = [
-            # 空の営業時間(開店>=閉店)や24時超えはカレンダー・座席ボードを壊すためDBで禁止
+            # 開店<閉店、閉店は30時(翌6時)まで、営業は最長24時間。
+            # 24時間超を許すと翌日早朝の時刻がどの営業日の枠か曖昧になるため禁止。
             models.CheckConstraint(
-                condition=models.Q(opening_hour__lt=models.F('closing_hour'), closing_hour__lte=24),
+                condition=(
+                    models.Q(
+                        opening_hour__lt=models.F('closing_hour'),
+                        opening_hour__lte=23,
+                        closing_hour__lte=30,
+                    )
+                    & models.Q(closing_hour__lte=models.F('opening_hour') + 24)
+                ),
                 name='store_valid_business_hours',
             ),
         ]
@@ -33,8 +41,24 @@ class Store(models.Model):
 
     @property
     def business_hours(self):
-        """予約枠の対象となる時刻(時)のリスト。閉店時刻の枠は含まない。"""
+        """予約枠の対象となる時刻(時)のリスト。閉店時刻の枠は含まない。
+
+        24以上の値は翌日早朝の枠(25 = 翌1時)。表示・URLにはこの値をそのまま使い、
+        実時刻への変換は booking.views.make_aware_datetime が行う。
+        """
         return range(self.opening_hour, self.closing_hour)
+
+    def business_slot(self, local_dt):
+        """aware datetime(ローカル時刻)を(営業日, 枠時刻)に変換する。
+
+        深夜営業の店では翌日早朝(閉店-24時より前)の時刻を、前日の 24+h 枠として扱う。
+        """
+        import datetime as _dt
+        hour = local_dt.hour
+        date = local_dt.date()
+        if self.closing_hour > 24 and hour < self.closing_hour - 24:
+            return date - _dt.timedelta(days=1), hour + 24
+        return date, hour
 
 
 class Staff(models.Model):

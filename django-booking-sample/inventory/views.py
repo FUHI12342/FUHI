@@ -92,7 +92,7 @@ class OrderDetail(LoginRequiredMixin, UserPassesTestMixin, generic.DetailView):
 @login_required
 def approve_order(request, pk):
     order = get_object_or_404(PurchaseOrder.objects.select_related('supplier', 'store'), pk=pk)
-    if not user_belongs_to_store(request.user, order.store):
+    if not user_belongs_to_store(request.user, order.store, require_manager=True):
         raise PermissionDenied
     if order.status != PurchaseOrder.STATUS_PROPOSED:
         messages.error(request, 'この発注はすでに処理済みです。')
@@ -109,7 +109,7 @@ def approve_order(request, pk):
 @login_required
 def receive_order(request, pk):
     order = get_object_or_404(PurchaseOrder.objects.select_related('store'), pk=pk)
-    if not user_belongs_to_store(request.user, order.store):
+    if not user_belongs_to_store(request.user, order.store, require_manager=True):
         raise PermissionDenied
     if order.status != PurchaseOrder.STATUS_SENT:
         messages.error(request, '入荷待ちの発注ではありません。')
@@ -123,7 +123,7 @@ def receive_order(request, pk):
 @login_required
 def cancel_order(request, pk):
     order = get_object_or_404(PurchaseOrder.objects.select_related('store'), pk=pk)
-    if not user_belongs_to_store(request.user, order.store):
+    if not user_belongs_to_store(request.user, order.store, require_manager=True):
         raise PermissionDenied
     if order.status == PurchaseOrder.STATUS_PROPOSED:
         order.status = PurchaseOrder.STATUS_CANCELLED

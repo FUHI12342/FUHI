@@ -80,7 +80,8 @@
     "fields": {
       "name": "ぱいそん",
       "user": 2,
-      "store": 1
+      "store": 1,
+      "is_manager": true
     }
   },
   {
@@ -89,7 +90,8 @@
     "fields": {
       "name": "じゃんご",
       "user": 2,
-      "store": 2
+      "store": 2,
+      "is_manager": true
     }
   },
   {

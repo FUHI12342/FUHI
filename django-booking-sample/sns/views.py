@@ -57,7 +57,7 @@ def regenerate(request, store_pk):
 @login_required
 def approve(request, pk):
     draft = get_object_or_404(PostDraft, pk=pk)
-    if not user_belongs_to_store(request.user, draft.store):
+    if not user_belongs_to_store(request.user, draft.store, require_manager=True):
         raise PermissionDenied
     if draft.status == PostDraft.STATUS_APPROVED:
         # 承認済み: 失敗・未記録のプラットフォームだけ再配信(投稿済み・手動はスキップ)

@@ -23,6 +23,11 @@ python manage.py runserver
 | `DJANGO_DEBUG` | `false` を設定(デフォルトは開発用の `true`) |
 | `DJANGO_ALLOWED_HOSTS` | カンマ区切りのホスト名 |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | カンマ区切りのオリジン(リバースプロキシ配下用) |
+| `DATABASE_URL` | 本番DB。`postgres://user:pass@host:5432/name` または Cloud SQL ソケット `postgres://user:pass@/name?host=/cloudsql/PROJECT:REGION:INSTANCE`(未設定なら SQLite) |
+| `SENTRY_DSN` | エラートラッキング(任意) |
+| `DJANGO_HSTS_SECONDS` | HSTS 秒数(デフォルト3600) |
+
+運用フロー・役割分担は [docs/operations-model.md](../docs/operations-model.md) を参照。
 
 ## 主な画面
 

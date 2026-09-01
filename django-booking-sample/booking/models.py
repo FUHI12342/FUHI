@@ -57,6 +57,9 @@ class Staff(models.Model):
     # SNS文面・画像の生成は必ずこのフラグと is_on_roster を参照する。
     sns_publishable = models.BooleanField('SNS掲載可', default=False)
     is_on_roster = models.BooleanField('在籍中', default=True)
+    # 承認権限(SNS投稿の承認・発注の承認/取消/入荷・開閉店・勤怠CSV)。
+    # 対外影響・金銭影響のある操作はこのフラグを持つスタッフに限定する。
+    is_manager = models.BooleanField('店長(承認権限)', default=False)
 
     class Meta:
         constraints = [

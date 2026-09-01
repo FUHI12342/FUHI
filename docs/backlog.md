@@ -5,28 +5,22 @@
 未実装・検討中の項目を棚卸しし、実装前検証(必要性・設計案・工数・リスク)を行った結果。
 判定は **次ラウンド採用 / 条件付き(判断待ち) / 保留 / 見送り** の4値。
 
-## 次ラウンド採用(実装前検証を通過。着手可能)
+## 次ラウンド採用 → ✅ 実装済み(2026-09-01)
 
-### B-1. 役割ベース権限(店長ロール)
-- **現状**: 店舗スタッフなら誰でも(キャスト含む)開店操作・SNS承認・発注承認ができる。
-- **検証**: SNS承認・発注承認は金銭・対外影響のある操作であり、承認権限の分離は要件B-3/F-4の
-  「人間の承認」の実効性に直結する。`Staff` に `is_manager` フラグを追加し、
-  `user_belongs_to_store`(booking/access.py に集約済み)に `require_manager=False` 引数を
-  足すだけで全アプリに波及できる構造になっている。
-- **工数**: 小(フィールド1つ+判定1箇所+テスト)。
-- **リスク**: 1人店舗では全員店長にすればよく、運用負荷は増えない。
+### B-1. 役割ベース権限(店長ロール) — ✅ 実装済み
+- `Staff.is_manager` を追加し、承認系操作(SNS承認・発注承認/取消/入荷・開閉店・勤怠CSV)を
+  `user_belongs_to_store(..., require_manager=True)` でゲート。閲覧・チェックリスト・打刻・
+  下書き生成・発注案生成は全スタッフのまま。権限マトリクスは operations-model.md 参照。
 
-### B-2. PostgreSQL(Cloud SQL)対応
-- **現状**: SQLite 固定。Cloud Run はコンテナ再起動でローカルファイルが消えるため、
-  **本番デプロイの前提条件**。
-- **検証**: `DATABASE_URL` 環境変数での切替(dj-database-url 導入 or 手書きパース)。
-  モデルは全て標準フィールドで Postgres 互換(部分UNIQUE制約・CheckConstraint も対応済み)。
-- **工数**: 小。ただし Cloud SQL インスタンス作成はアカウント所有者の作業(external-setup-guide 参照)。
+### B-2. PostgreSQL(Cloud SQL)対応 — ✅ 実装済み
+- `DATABASE_URL` 環境変数で切替(project/database.py。TCP と Cloud SQL Unix ソケット両対応、
+  依存追加なしの自前パーサ+単体テスト)。psycopg[binary] を requirements に追加。
+  Cloud SQL インスタンス作成はアカウント所有者の作業(external-setup-guide 参照)。
 
-### B-3. エラートラッキング(Sentry 等)
-- **検証**: SNS配信・GBP同期など外部API呼び出しの失敗はチェックリスト警告に載るが、
-  想定外の500はログにしか残らない。本番運用開始と同時に導入すべき。
-- **工数**: 小(SDK導入+DSN環境変数)。
+### B-3. エラートラッキング(Sentry) — ✅ 実装済み
+- `SENTRY_DSN` 設定時のみ有効。`send_default_pii=False`(予約者名・キャスト名を送らない)。
+- あわせて `check --deploy` の警告を解消(本番の HTTPS 強制・secure cookie・HSTS 1時間。
+  HSTS preload/includeSubDomains はドメイン運用確定まで意図的に見送り)。
 
 ## 条件付き(ユーザーの判断・情報が必要)
 

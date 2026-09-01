@@ -36,6 +36,18 @@ if not ALLOWED_HOSTS and DEBUG:
 # Cloud Run 等のリバースプロキシ配下で HTTPS 判定するための設定
 CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',') if o]
 
+if not DEBUG:
+    # 本番のHTTPS強制(check --deploy の W004/W008/W012/W016 対応)。
+    # Cloud Run はプロキシ終端のため X-Forwarded-Proto で判定する。
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = os.environ.get('DJANGO_SECURE_SSL_REDIRECT', 'true').lower() == 'true'
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # HSTS は控えめな初期値(1時間)。HTTPS のみで安定運用できたら env で延ばす。
+    # includeSubDomains / preload(check --deploy W020/W021)は解除がほぼ効かないため
+    # 独自ドメイン運用が固まるまで意図的に有効化しない。
+    SECURE_HSTS_SECONDS = int(os.environ.get('DJANGO_HSTS_SECONDS', '3600'))
+
 
 # Application definition
 
@@ -87,12 +99,18 @@ WSGI_APPLICATION = 'project.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/2.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+# 本番は DATABASE_URL(PostgreSQL / Cloud SQL)を設定する。
+# Cloud Run はコンテナ再作成でローカルファイルが消えるため、SQLite は開発専用。
+if os.environ.get('DATABASE_URL'):
+    from .database import database_config_from_url
+    DATABASES = {'default': database_config_from_url(os.environ['DATABASE_URL'])}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        }
     }
-}
 
 
 # Password validation
@@ -162,3 +180,14 @@ LOGIN_REDIRECT_URL = 'booking:store_list'
 LOGOUT_REDIRECT_URL = 'booking:login'
 
 DEFAULT_AUTO_FIELD='django.db.models.AutoField'
+
+# エラートラッキング(任意)。SENTRY_DSN を設定すると有効になる。
+SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
+if SENTRY_DSN:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=os.environ.get('SENTRY_ENVIRONMENT', 'production' if not DEBUG else 'development'),
+        send_default_pii=False,  # 予約者名・キャスト名等の個人情報は送らない
+        traces_sample_rate=float(os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0')),
+    )

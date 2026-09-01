@@ -592,3 +592,64 @@ class ModelConstraintTests(TestCase):
         active.left_at = timezone.now()
         active.save()
         WalkIn.objects.create(seat=seat, party_size=3)
+
+
+class ManagerRoleTests(TestCase):
+    """承認系操作は店長(is_manager)限定であることの確認。
+
+    fixture: tanakataro のスタッフ(pk=1,2)は店長、yosidaziro のスタッフ(pk=3)は一般。
+    """
+    fixtures = ['initial']
+
+    def test_non_manager_cannot_open_store(self):
+        self.client.login(username='yosidaziro', password='helloworld123')
+        response = self.client.post(resolve_url('operations:open_store', store_pk=1))
+        self.assertEqual(response.status_code, 403)
+
+    def test_manager_can_open_store(self):
+        self.client.login(username='tanakataro', password='helloworld123')
+        response = self.client.post(resolve_url('operations:open_store', store_pk=1), follow=True)
+        self.assertEqual(response.status_code, 200)
+
+    def test_non_manager_cannot_approve_sns_draft(self):
+        import tempfile
+        from django.test import override_settings
+        with override_settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            from sns import services as sns_services
+            from .models import Store
+            draft = sns_services.generate_draft(Store.objects.get(pk=1), timezone.localdate())
+        self.client.login(username='yosidaziro', password='helloworld123')
+        response = self.client.post(resolve_url('sns:approve', pk=draft.pk))
+        self.assertEqual(response.status_code, 403)
+
+    def test_non_manager_can_still_view_dashboard_and_toggle_tasks(self):
+        # 一般スタッフ(キャスト)もダッシュボード閲覧とチェックリスト操作はできる
+        self.client.login(username='yosidaziro', password='helloworld123')
+        response = self.client.get(resolve_url('operations:dashboard', store_pk=1))
+        self.assertEqual(response.status_code, 200)
+
+
+class DatabaseUrlParserTests(TestCase):
+    def test_standard_url(self):
+        from project.database import database_config_from_url
+        config = database_config_from_url('postgres://app:s3cret@10.0.0.5:5432/booking')
+        self.assertEqual(config['ENGINE'], 'django.db.backends.postgresql')
+        self.assertEqual(config['NAME'], 'booking')
+        self.assertEqual(config['USER'], 'app')
+        self.assertEqual(config['PASSWORD'], 's3cret')
+        self.assertEqual(config['HOST'], '10.0.0.5')
+        self.assertEqual(config['PORT'], '5432')
+
+    def test_cloud_sql_unix_socket(self):
+        from project.database import database_config_from_url
+        config = database_config_from_url(
+            'postgres://app:pw@/booking?host=/cloudsql/myproj:asia-northeast1:db1'
+        )
+        self.assertEqual(config['HOST'], '/cloudsql/myproj:asia-northeast1:db1')
+        self.assertEqual(config['NAME'], 'booking')
+
+    def test_rejects_unknown_scheme(self):
+        from django.core.exceptions import ImproperlyConfigured
+        from project.database import database_config_from_url
+        with self.assertRaises(ImproperlyConfigured):
+            database_config_from_url('mysql://a:b@h/db')

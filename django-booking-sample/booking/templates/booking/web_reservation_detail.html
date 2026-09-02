@@ -1,0 +1,22 @@
+{% extends 'booking/base.html' %}
+
+{% block content %}
+    <h1>{{ store.name }} ご予約内容</h1>
+    <ul>
+        <li>お名前: {{ schedule.name }} 様</li>
+        <li>日時: {{ schedule.start|date:"Y年n月j日(D) H:i" }}〜</li>
+        <li>人数: {{ schedule.party_size }}名</li>
+        <li>席: {{ schedule.seat.name }}({{ schedule.seat.get_seat_type_display }})</li>
+        <li>メール: {{ schedule.customer_email }}</li>
+    </ul>
+    {% if schedule.is_cancellable %}
+        <form action="{% url 'booking:web_reservation_cancel' schedule.cancel_token %}" method="post"
+              onsubmit="return confirm('この予約をキャンセルします。よろしいですか?');">
+            {% csrf_token %}
+            <button type="submit">予約をキャンセルする</button>
+        </form>
+        <p>開始時刻までこの画面からキャンセルできます。このページのURLは大切に保管してください。</p>
+    {% else %}
+        <p>開始時刻を過ぎているため、この画面からのキャンセルはできません。変更は店舗へ直接ご連絡ください。</p>
+    {% endif %}
+{% endblock %}

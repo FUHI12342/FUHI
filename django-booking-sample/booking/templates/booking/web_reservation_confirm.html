@@ -1,0 +1,18 @@
+{% extends 'booking/base.html' %}
+
+{% block content %}
+    <h1>{{ store.name }} 予約内容の確認</h1>
+    <ul>
+        <li>日時: {{ date|date:"Y年n月j日(D)" }} {{ slot_label }}〜(1時間)</li>
+        <li>人数: {{ party_size }}名</li>
+        <li>席: {{ seat.name }}({{ seat.get_seat_type_display }}・定員{{ seat.capacity }}名)</li>
+    </ul>
+    <form action="" method="post">
+        {% csrf_token %}
+        <input type="hidden" name="party_size" value="{{ party_size }}">
+        {{ form.as_p }}
+        <p>確認メールに予約の確認・キャンセル用URLをお送りします。ご都合が悪くなった場合は開始時刻までにキャンセルをお願いします。</p>
+        <button type="submit">この内容で予約する</button>
+    </form>
+    <p><a href="{% url 'booking:web_reservation' store.pk %}?date={{ date|date:'Y-m-d' }}&party_size={{ party_size }}">別の席・時間を選び直す</a></p>
+{% endblock %}

@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from attendance.models import Shift
 from booking.models import Staff, Store
+from .gbp import special_hours_payload
 from .models import BusinessDay, ChecklistTask, ChecklistTemplateItem
 from . import services
 from .signals import store_opened
@@ -110,3 +111,24 @@ class DashboardViewTests(TestCase):
         task.refresh_from_db()
         self.assertTrue(task.is_done)
         self.assertEqual(task.done_by.username, 'tanakataro')
+
+
+class GbpPayloadTests(TestCase):
+    fixtures = ['initial']
+
+    def test_overnight_special_hours_payload(self):
+        store = Store.objects.get(pk=1)
+        business_day = BusinessDay(store=store, date=datetime.date(2026, 12, 31),
+                                   opening_hour_override=18, closing_hour_override=26)
+        period = special_hours_payload(business_day)['specialHours']['specialHourPeriods'][0]
+        self.assertEqual(period['startDate']['day'], 31)
+        self.assertEqual(period['openTime'], {'hours': 18})
+        self.assertEqual(period['endDate'], {'year': 2027, 'month': 1, 'day': 1})
+        self.assertEqual(period['closeTime'], {'hours': 2})
+
+    def test_same_day_payload_has_no_end_date(self):
+        store = Store.objects.get(pk=1)
+        business_day = BusinessDay(store=store, date=datetime.date(2026, 9, 1), closing_hour_override=15)
+        period = special_hours_payload(business_day)['specialHours']['specialHourPeriods'][0]
+        self.assertNotIn('endDate', period)
+        self.assertEqual(period['closeTime'], {'hours': 15})

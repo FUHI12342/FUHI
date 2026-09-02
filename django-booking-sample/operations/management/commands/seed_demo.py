@@ -95,6 +95,7 @@ class Command(BaseCommand):
             f'  ログイン: demo / {DEMO_PASSWORD}\n'
             f'  開店ダッシュボード: /ops/store/{store.pk}/today/\n'
             f'  座席ボード: /store/{store.pk}/seats/\n'
+            f'  Web座席予約(顧客向け): /store/{store.pk}/reserve/\n'
             f'  SNS投稿: /sns/store/{store.pk}/drafts/\n'
             f'  在庫・発注: /inventory/store/{store.pk}/'
         ))

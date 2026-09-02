@@ -1,0 +1,34 @@
+{% extends 'booking/base.html' %}
+
+{% block content %}
+    <h1>{{ store.name }} 席を予約する</h1>
+    <p>営業時間 {{ store.opening_hour }}:00〜{{ store.closing_hour }}:00{% if store.closing_hour > 24 %}(翌{{ store.closing_hour|add:"-24" }}:00){% endif %}</p>
+
+    <form action="" method="get">
+        {{ form.as_p }}
+        <button type="submit">空席を探す</button>
+    </form>
+
+    {% if slots is not None %}
+        <h2>{{ date|date:"Y年n月j日(D)" }} {{ party_size }}名 の空席</h2>
+        {% if slots %}
+            <table border="1" style="border-collapse:collapse">
+                <tr><th>時間</th><th>席</th></tr>
+                {% for slot in slots %}
+                    <tr>
+                        <th>{{ slot.label }}</th>
+                        <td>
+                            {% for seat in slot.seats %}
+                                <a href="{% url 'booking:web_reservation_confirm' store.pk date.year date.month date.day slot.hour seat.pk %}?party_size={{ party_size }}">{{ seat.name }}({{ seat.get_seat_type_display }}・{{ seat.capacity }}名席)</a>{% if not forloop.last %} / {% endif %}
+                            {% empty %}
+                                満席
+                            {% endfor %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </table>
+        {% else %}
+            <p>この日は予約できる枠がありません。人数や日付を変えてお試しください。</p>
+        {% endif %}
+    {% endif %}
+{% endblock %}

@@ -85,3 +85,9 @@ class ChecklistTask(models.Model):
         self.done_at = timezone.now()
         self.done_by = user
         self.save(update_fields=['is_done', 'done_at', 'done_by'])
+
+    def mark_undone(self):
+        self.is_done = False
+        self.done_at = None
+        self.done_by = None
+        self.save(update_fields=['is_done', 'done_at', 'done_by'])

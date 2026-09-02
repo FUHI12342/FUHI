@@ -2,6 +2,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from . import timeslots
+
 
 class Store(models.Model):
     """店舗"""
@@ -26,6 +28,8 @@ class Store(models.Model):
     enable_inventory = models.BooleanField('在庫・発注機能', default=True)
     enable_seat_board = models.BooleanField('座席ボード', default=True)
     enable_gbp = models.BooleanField('Googleマップ(GBP)連携', default=True)
+    # 顧客向けWeb座席予約(人数→空き座席→確定)。飲食業態の店舗でのみ意味を持つ。
+    enable_web_reservation = models.BooleanField('Web座席予約(飲食)', default=True)
 
     class Meta:
         constraints = [
@@ -52,21 +56,18 @@ class Store(models.Model):
         """予約枠の対象となる時刻(時)のリスト。閉店時刻の枠は含まない。
 
         24以上の値は翌日早朝の枠(25 = 翌1時)。表示・URLにはこの値をそのまま使い、
-        実時刻への変換は booking.views.make_aware_datetime が行う。
+        実時刻への変換は booking.timeslots が行う。
         """
         return range(self.opening_hour, self.closing_hour)
 
     def business_slot(self, local_dt):
-        """aware datetime(ローカル時刻)を(営業日, 枠時刻)に変換する。
+        """aware datetime(ローカル時刻)を(営業日, 枠時刻)に変換する。"""
+        return timeslots.business_slot(self, local_dt)
 
-        深夜営業の店では翌日早朝(閉店-24時より前)の時刻を、前日の 24+h 枠として扱う。
-        """
-        import datetime as _dt
-        hour = local_dt.hour
-        date = local_dt.date()
-        if self.closing_hour > 24 and hour < self.closing_hour - 24:
-            return date - _dt.timedelta(days=1), hour + 24
-        return date, hour
+    @property
+    def accepts_web_reservation(self):
+        """顧客がWebから座席予約できる店舗か(飲食業態かつフラグON)。"""
+        return self.business_type == self.TYPE_RESTAURANT and self.enable_web_reservation
 
 
 class Staff(models.Model):
@@ -132,32 +133,63 @@ class Seat(models.Model):
 
 
 class Schedule(models.Model):
-    """予約スケジュール."""
+    """予約スケジュール。
+
+    2種類の予約を同じテーブルで扱う。
+    - スタッフ枠予約(占い): staff 必須、seat は店側が任意で割当
+    - 座席予約(飲食のWeb予約): seat 必須、staff は無し。顧客の連絡先と取消トークンを持つ
+    """
     start = models.DateTimeField('開始時間')
     end = models.DateTimeField('終了時間')
     name = models.CharField('予約者名', max_length=255)
-    staff = models.ForeignKey('Staff', verbose_name='占いスタッフ', on_delete=models.CASCADE)
+    staff = models.ForeignKey(
+        'Staff', verbose_name='占いスタッフ', on_delete=models.CASCADE, null=True, blank=True
+    )
     seat = models.ForeignKey(
         Seat, verbose_name='座席', on_delete=models.SET_NULL, null=True, blank=True, related_name='schedules'
     )
     party_size = models.PositiveSmallIntegerField('人数', default=1)
+    # 顧客向けWeb座席予約で使う項目。ノーショー対策の連絡先と、ログイン不要で
+    # 予約確認・キャンセルするための推測不能なトークン(URL に載せる)。
+    customer_email = models.EmailField('連絡先メール', blank=True)
+    customer_phone = models.CharField('連絡先電話', max_length=20, blank=True)
+    cancel_token = models.CharField('取消トークン', max_length=64, null=True, blank=True, unique=True)
+    created_at = models.DateTimeField('登録日時', auto_now_add=True, null=True)
 
     class Meta:
         constraints = [
             # 同一スタッフ・同一開始時刻の予約はDBレベルで禁止(競合状態での二重予約防止)
-            models.UniqueConstraint(fields=['staff', 'start'], name='unique_schedule_per_staff_start'),
+            models.UniqueConstraint(
+                fields=['staff', 'start'],
+                condition=models.Q(staff__isnull=False),
+                name='unique_schedule_per_staff_start',
+            ),
             # 座席が割当済みなら、同一座席・同一開始時刻の重複割当を禁止
             models.UniqueConstraint(
                 fields=['seat', 'start'],
                 condition=models.Q(seat__isnull=False),
                 name='unique_schedule_per_seat_start',
             ),
+            # スタッフも座席も無い予約は誰の何の予約か分からないため禁止
+            models.CheckConstraint(
+                condition=models.Q(staff__isnull=False) | models.Q(seat__isnull=False),
+                name='schedule_has_staff_or_seat',
+            ),
         ]
 
     def __str__(self):
         start = timezone.localtime(self.start).strftime('%Y/%m/%d %H:%M:%S')
         end = timezone.localtime(self.end).strftime('%Y/%m/%d %H:%M:%S')
-        return f'{self.name} {start} ~ {end} {self.staff}'
+        return f'{self.name} {start} ~ {end} {self.staff or self.seat}'
+
+    @property
+    def is_web_reservation(self):
+        return bool(self.cancel_token)
+
+    @property
+    def is_cancellable(self):
+        """顧客自身で取り消せるか。開始時刻を過ぎたら店舗連絡に切り替える。"""
+        return self.is_web_reservation and self.start > timezone.now()
 
 
 class WalkIn(models.Model):

@@ -1,10 +1,16 @@
 {% extends 'booking/base.html' %}
 
 {% block content %}
-    <h1>占いの館　店舗一覧</h1>
+    <h1>店舗一覧</h1>
     <ul>
         {% for store in store_list %}
-            <li><a href="{% url 'booking:staff_list' store.pk %}">{{ store.name }}</a></li>
+            <li>
+                {% if store.accepts_web_reservation %}
+                    <a href="{% url 'booking:web_reservation' store.pk %}">{{ store.name }}</a>(席を予約)
+                {% else %}
+                    <a href="{% url 'booking:staff_list' store.pk %}">{{ store.name }}</a>
+                {% endif %}
+            </li>
         {% empty %}
             <li>まだ予約可能な店舗がありません。</li>
         {% endfor %}

@@ -2,7 +2,17 @@
 
 Django製の予約サイト([django-booking-sample](https://github.com/naritotakizawa/django-booking-sample) ベース)を、
 リアル店舗の開店業務自動化システムへ拡張したもの。
-要件定義・実装計画は [docs/store-opening-automation-requirements.md](../docs/store-opening-automation-requirements.md) を参照。
+
+## 資料
+
+| 資料 | 内容 |
+|---|---|
+| [CLAUDE.md](../CLAUDE.md) | プロジェクト案内・設計ルール・アプリ構成(最初に読む) |
+| [docs/store-opening-automation-requirements.md](../docs/store-opening-automation-requirements.md) | 要件定義・見送り判断・実装済み管理表 |
+| [docs/operations-model.md](../docs/operations-model.md) | 権限マトリクス・日次運用・障害時フォールバック |
+| [docs/backlog.md](../docs/backlog.md) | 未着手タスク(GitHub Issues 対応) |
+| [docs/CHANGELOG.md](../docs/CHANGELOG.md) | 実装履歴 |
+| [docs/external-setup-guide.md](../docs/external-setup-guide.md) | 外部サービス設定手順 |
 
 ## 動かし方
 
@@ -34,6 +44,7 @@ python manage.py runserver
 | URL | 内容 |
 |---|---|
 | `/` | 店舗一覧・予約カレンダー(既存) |
+| `/store/<id>/reserve/` | 顧客向けWeb座席予約(飲食業態・ログイン不要。人数→空席候補→確定、確認メール、開始前キャンセル) |
 | `/ops/store/<id>/today/` | 開店ダッシュボード(チェックリスト・開閉店・当日シフト) |
 | `/attendance/` | 自分の勤怠(出退勤打刻) |
 | `/store/<id>/seats/` | 座席ボード(予約・ウォークイン) |
